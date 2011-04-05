@@ -925,18 +925,18 @@ class P4Submit(Command):
             submitTemplate = self.prepareLogMessage(template, logMessage)
             if os.environ.has_key("P4DIFF"):
                 del(os.environ["P4DIFF"])
-            separatorLine = "######## everything below this line is just the diff #######\n"
+            separatorLine = "######## everything below this line is just the diff #######"
 
             [handle, fileName] = tempfile.mkstemp()
             tmpFile = os.fdopen(handle, "w+")
+            tmpFileContent = submitTemplate + separatorLine + "\n" + diff
             if self.isWindows:
-                submitTemplate = submitTemplate.replace("\n", "\r\n")
-                separatorLine = separatorLine.replace("\n", "\r\n")
-            tmpFile.write(submitTemplate + separatorLine + diff)
+                tmpFileContent = tmpFileContent.replace("\n", "\r\n")
+            tmpFile.write(tmpFileContent)
             tmpFile.close()
             mtime = os.stat(fileName).st_mtime
             defaultEditor = "vi"
-            if platform.system() == "Windows":
+            if self.isWindows:
                 defaultEditor = "notepad"
             if os.environ.has_key("P4EDITOR"):
                 editor = os.environ.get("P4EDITOR")
