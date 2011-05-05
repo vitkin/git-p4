@@ -1136,6 +1136,7 @@ class P4Sync(Command):
                 optparse.make_option("--silent", dest="silent", action="store_true"),
                 optparse.make_option("--detect-labels", dest="detectLabels", action="store_true"),
                 optparse.make_option("--verbose", dest="verbose", action="store_true"),
+                optparse.make_option("--restart-import", dest="restartImport", action="store_true"),
                 optparse.make_option("--import-local", dest="importIntoRemotes", action="store_false",
                                      help="Import into refs/heads/ , not refs/remotes"),
                 optparse.make_option("--max-changes", dest="maxChanges"),
@@ -1162,6 +1163,7 @@ class P4Sync(Command):
         self.changesFile = ""
         self.syncWithOrigin = True
         self.verbose = False
+        self.restartImport = False
         self.importIntoRemotes = True
         if gitConfig("git-p4.importIntoRemotes") == "false":
             self.importIntoRemotes = False
@@ -1184,7 +1186,7 @@ class P4Sync(Command):
 
         self.knownBranches = {}
         self.initialParents = {}
-
+        
         if gitConfig("git-p4.syncFromOrigin") == "false":
             self.syncWithOrigin = False
 
@@ -1360,7 +1362,6 @@ class P4Sync(Command):
         self.gitStream.write("data <<EOT\n")
         self.gitStream.write(details["desc"])
         self.gitStream.write("\nEOT\n\n")
-
         if len(parent) > 0:
             if self.verbose:
                 print "parent %s" % parent
@@ -1691,7 +1692,7 @@ class P4Sync(Command):
         self.importChanges(changes)
         return True
 
-    def importChanges(self, changes):
+    def importChanges(self, changes, restartImport = False):
         cnt = 1
         for change in changes:
             description = self.p4.p4Cmd("describe %s" % change)
@@ -1750,8 +1751,14 @@ class P4Sync(Command):
                         self.commit(description, filesForCommit, branch, [branchPrefix], parent)
                 else:
                     files = self.extractFilesFromCommit(description)
-                    self.commit(description, files, self.branch, self.depotPaths,
-                                self.initialParent, self.initialNoteParent)
+                    if (cnt == 2 and restartImport):
+                        parent = "%s^0" % self.branch
+                        noteParent = "refs/notes/git-p4^0"
+                        self.commit(description, files, self.branch, self.depotPaths,
+                                    parent, noteParent)
+                    else:    
+                        self.commit(description, files, self.branch, self.depotPaths,
+                                    self.initialParent, self.initialNoteParent)
                     self.initialParent = ""
                     self.initialNoteParent = ""
             except IOError:
@@ -1948,7 +1955,6 @@ class P4Sync(Command):
 
             if self.verbose:
                 print "branches: %s" % self.p4BranchesInGit
-
             self.CalculateLastImportedP4ChangeList()
             
         if not self.branch.startswith("refs/"):
@@ -2002,7 +2008,8 @@ class P4Sync(Command):
                     print "Getting p4 changes for %s...%s" % (', '.join(self.depotPaths),
                                                               self.changeRange)
                 changes = self.p4.p4ChangesForPaths(self.depotPaths, self.changeRange)
-
+                if self.verbose:
+                    print "Found %i changes" % len(changes)
                 if len(self.maxChanges) > 0:
                     changes = changes[:min(int(self.maxChanges), len(changes))]
 
@@ -2015,8 +2022,13 @@ class P4Sync(Command):
                 print "Import destination: %s" % self.branch
 
             self.updatedBranches = set()
-
-            self.importChanges(changes)
+            # http://www.kerneltrap.com/mailarchive/git/2009/7/7/6203
+            # To restart an import, you need to use the from command in the
+            # first commit of that session, e.g. to restart an import on
+            # refs/heads/master use:
+            #
+            #  from refs/heads/master^0
+            self.importChanges(changes, self.restartImport)
 
             if not self.silent:
                 print ""
