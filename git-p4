@@ -1538,7 +1538,7 @@ class P4Sync(Command):
             if self.verbose:
                 print "Querying files for label %s" % label
             for f in self.p4.p4CmdList("files "
-                                  +  ' '.join (["%s...@%s" % (p, label)
+                                  +  ' '.join (['"%s...@%s"' % (p, label)
                                                 for p in self.depotPaths])):
                 revisions[f["depotFile"]] = f["rev"]
                 change = int(f["change"])
