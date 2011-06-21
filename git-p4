@@ -1060,8 +1060,6 @@ class P4Submit(Command):
             commit = self.commits[0]
             self.commits = self.commits[1:]
             self.applyCommit(commit)
-            if not self.interactive:
-                break
 
     def sync(self, settings):
         unused = settings
