@@ -1688,15 +1688,15 @@ class P4Sync(Command):
         return True
 
     def importChanges(self, changes, restartImport = False):
-        cnt = 1
+        cnt = 0
         for change in changes:
             description = self.p4.p4Cmd("describe %s" % change)
             self.updateOptionDict(description)
 
+            cnt = cnt + 1
             if not self.silent:
                 sys.stdout.write("\rImporting revision %s (%s%%)" % (change, cnt * 100 / len(changes)))
                 sys.stdout.flush()
-            cnt = cnt + 1
 
             try:
                 if self.detectBranches:
@@ -1746,7 +1746,7 @@ class P4Sync(Command):
                         self.commit(description, filesForCommit, branch, [branchPrefix], parent)
                 else:
                     files = self.extractFilesFromCommit(description)
-                    if (cnt == 2 and restartImport):
+                    if (cnt == 1 and restartImport):
                         parent = "%s^0" % self.branch
                         noteParent = "refs/notes/git-p4^0"
                         self.commit(description, files, self.branch, self.depotPaths,
