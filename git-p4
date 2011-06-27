@@ -778,6 +778,7 @@ class P4Submit(Command):
         self.options = [
                 optparse.make_option("--verbose", dest="verbose", action="store_true"),
                 optparse.make_option("--origin", dest="origin"),
+                optparse.make_option("--auto", dest="interactive", action="store_false", help="Automatically submit changelists without requiring editing"),
                 optparse.make_option("-M", dest="detectRename", action="store_true", help="detect renames"),
                 optparse.make_option("-C", dest="detectCopy", action="store_true", help="detect copies"),
                 optparse.make_option("--import-local", dest="importIntoRemotes", action="store_false",
@@ -920,20 +921,20 @@ class P4Submit(Command):
 
     def submit(self, template, logMessage,  diff):
         changelist = 0
-        if self.interactive:
-            chdir(self.clientPath)
-            submitTemplate = self.prepareLogMessage(template, logMessage)
-            if os.environ.has_key("P4DIFF"):
-                del(os.environ["P4DIFF"])
-            separatorLine = "######## everything below this line is just the diff #######"
+        chdir(self.clientPath)
+        submitTemplate = self.prepareLogMessage(template, logMessage)
+        if os.environ.has_key("P4DIFF"):
+            del(os.environ["P4DIFF"])
+        separatorLine = "######## everything below this line is just the diff #######"
 
-            [handle, fileName] = tempfile.mkstemp()
-            tmpFile = os.fdopen(handle, "w+")
-            tmpFileContent = submitTemplate + separatorLine + "\n" + diff
-            if self.isWindows:
-                tmpFileContent = tmpFileContent.replace("\n", "\r\n")
-            tmpFile.write(tmpFileContent)
-            tmpFile.close()
+        [handle, fileName] = tempfile.mkstemp()
+        tmpFile = os.fdopen(handle, "w+")
+        tmpFileContent = submitTemplate + separatorLine + "\n" + diff
+        if self.isWindows:
+            tmpFileContent = tmpFileContent.replace("\n", "\r\n")
+        tmpFile.write(tmpFileContent)
+        tmpFile.close()
+        if self.interactive:
             mtime = os.stat(fileName).st_mtime
             defaultEditor = "vi"
             if self.isWindows:
@@ -949,36 +950,32 @@ class P4Submit(Command):
                 response = "x"
                 while response != "y" and response != "n":
                     response = raw_input("Submit template unchanged. Submit anyway? [y]es, [n]o (skip this patch) ")
-
-            if response == "y":
-                # rewrite the file with everything below separatorLine stripped
-                tmpFile = open(fileName, "r")
-                message = tmpFile.read()
-                tmpFile.close()
-                tmpFile = tempfile.NamedTemporaryFile()
-                submitTemplate = message[:message.index(separatorLine)]
-                tmpFile.write(submitTemplate)
-                tmpFile.flush()
-
-                cmd = "cat %s | %s" % (tmpFile.name, self.p4.p4_build_cmd("submit -i"))
-                popen = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE)
-                output = popen.communicate()[0]
-                tmpFile.close
-                if popen.returncode:
-                    die('Command failed: %s' % cmd)
-                match = re.search("Change ([0-9]+) submitted", output)
-                if match:
-                    changelist = match.group(1)
-            else:
-                self.revertCommit()
-
-            os.remove(fileName)
         else:
-            fileName = "submit.txt"
-            f = open(fileName, "w+")
-            f.write(self.prepareLogMessage(template, logMessage))
-            f.close()
-            self.manualSubmitMessage(fileName)
+            response = "y"
+
+        if response == "y":
+            # rewrite the file with everything below separatorLine stripped
+            tmpFile = open(fileName, "r")
+            message = tmpFile.read()
+            tmpFile.close()
+            tmpFile = tempfile.NamedTemporaryFile()
+            submitTemplate = message[:message.index(separatorLine)]
+            tmpFile.write(submitTemplate)
+            tmpFile.flush()
+
+            cmd = "cat %s | %s" % (tmpFile.name, self.p4.p4_build_cmd("submit -i"))
+            popen = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE)
+            output = popen.communicate()[0]
+            tmpFile.close
+            if popen.returncode:
+                die('Command failed: %s' % cmd)
+            match = re.search("Change ([0-9]+) submitted", output)
+            if match:
+                changelist = match.group(1)
+        else:
+            self.revertCommit()
+
+        os.remove(fileName)
         return changelist
 
     def addOrDeleteFiles(self, changelist=""):
@@ -1063,8 +1060,6 @@ class P4Submit(Command):
             commit = self.commits[0]
             self.commits = self.commits[1:]
             self.applyCommit(commit)
-            if not self.interactive:
-                break
 
     def sync(self, settings):
         unused = settings
