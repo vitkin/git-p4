@@ -920,6 +920,7 @@ class P4Submit(Command):
                % (fileName, fileName))
 
     def submit(self, template, logMessage,  diff):
+        # submit files to p4. Return changelist number, or 0 if not submitted
         changelist = 0
         chdir(self.clientPath)
         submitTemplate = self.prepareLogMessage(template, logMessage)
@@ -1052,8 +1053,9 @@ class P4Submit(Command):
         changelist = self.submit(template, logMessage, diff)
         
         # Add note
-        cmd = 'git notes --ref=git-p4 add -m "[depot-paths = \\"%s\\": change = %s]" %s' % (self.depotPath, changelist, id)
-        system(cmd)
+        if changelist > 0:
+            cmd = 'git notes --ref=git-p4 add -m "[depot-paths = \\"%s\\": change = %s]" %s' % (self.depotPath, changelist, id)
+            system(cmd)
 
     def applyCommits(self):
         while len(self.commits) > 0:
