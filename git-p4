@@ -396,7 +396,10 @@ def isValidGitDir(path):
     return False
 
 def parseRevision(ref):
-    return read_pipe("git rev-parse %s" % ref).strip()
+    if gitBranchExists(ref):
+        return read_pipe("git rev-parse %s" % ref).strip()
+    else:
+        return ""
 
 def extractLogMessageFromGitCommit(commit):
     logMessage = ""
@@ -2063,9 +2066,8 @@ class P4Rebase(Command):
         self.verbose = False
 
     def run(self, args):
-        unused = args
         sync = P4Sync()
-        sync.run([])
+        sync.run(args)
 
         return self.rebase()
 
