@@ -1133,6 +1133,7 @@ class P4Sync(Command):
                 optparse.make_option("--silent", dest="silent", action="store_true"),
                 optparse.make_option("--detect-labels", dest="detectLabels", action="store_true"),
                 optparse.make_option("--verbose", dest="verbose", action="store_true"),
+                optparse.make_option("--debug", dest="debug", action="store_true"),
                 optparse.make_option("--restart-import", dest="restartImport", action="store_true"),
                 optparse.make_option("--import-local", dest="importIntoRemotes", action="store_false",
                                      help="Import into refs/heads/ , not refs/remotes"),
@@ -1438,10 +1439,6 @@ class P4Sync(Command):
         self.gitStream.write("]\nEOT\n\n")
         
         self.markCounter += 1
-        if self.debug:
-            print "Input for 'git fast-import':"
-            print self.gitStream.getvalue()
-        
         change = int(details["change"])
 
         if self.labels.has_key(change):
@@ -1697,7 +1694,7 @@ class P4Sync(Command):
 
             cnt = cnt + 1
             if not self.silent:
-                sys.stdout.write("\rImporting revision %s (%s%%)" % (change, cnt * 100 / len(changes)))
+                sys.stdout.write("\rImporting revision %s (%s%%)\n" % (change, cnt * 100 / len(changes)))
                 sys.stdout.flush()
 
             try:
@@ -1859,9 +1856,6 @@ class P4Sync(Command):
         if p4Change > 0:
             self.depotPaths = sorted(self.previousDepotPaths)
             self.changeRange = "@%s,#head" % p4Change
-            if not self.detectBranches:
-                self.initialParent = parseRevision(self.branch)
-                self.initialNoteParent = parseRevision("refs/notes/git-p4")
             if not self.silent and not self.detectBranches:
                 print "Performing incremental import into %s git branch" % self.branch
         
@@ -1914,6 +1908,9 @@ class P4Sync(Command):
 
 
     def run(self, args):
+        if self.debug:
+            self.verbose = True
+            
         # map from branch depot path to parent branch
         self.hasOrigin = originP4BranchesExist()
         if not self.syncWithOrigin:
@@ -1954,6 +1951,10 @@ class P4Sync(Command):
                 print "branches: %s" % self.p4BranchesInGit
             self.CalculateLastImportedP4ChangeList()
             
+        if not self.detectBranches:
+            self.initialParent = parseRevision(self.branch)
+            self.initialNoteParent = parseRevision("refs/notes/git-p4")
+
         if not self.branch.startswith("refs/"):
             self.branch = "refs/heads/" + self.branch
 
@@ -2034,6 +2035,13 @@ class P4Sync(Command):
                     for b in self.updatedBranches:
                         sys.stdout.write("%s " % b)
                     sys.stdout.write("\n")
+
+        if self.debug:
+            tmpfile = "%s/p4import" % tempfile.gettempdir()
+            print "Input for 'git fast-import' written to %s\n" % tmpfile
+            FILE = open(tmpfile, "w")
+            FILE.write(self.gitStream.getvalue())
+            FILE.close()
 
         importProcess = subprocess.Popen(["git", "fast-import"],
                                          stdin=subprocess.PIPE, stdout=subprocess.PIPE,
