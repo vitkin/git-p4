@@ -2055,19 +2055,16 @@ class P4Sync(Command):
 
         return True
 
-class P4Rebase(Command):
+class P4Rebase(P4Sync):
     def __init__(self):
-        Command.__init__(self)
-        self.options = [
-            optparse.make_option("--verbose", dest="verbose", action="store_true"),
+        P4Sync.__init__(self)
+        self.options += [
         ]
         self.description = ("Fetches the latest revision from perforce and "
                             + "rebases the current work (branch) against it")
-        self.verbose = False
 
     def run(self, args):
-        sync = P4Sync()
-        sync.run(args)
+        P4Sync.run(self, args)
 
         return self.rebase()
 
