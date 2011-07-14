@@ -481,24 +481,32 @@ def findUpstreamBranchPoint(head = "HEAD"):
     branchByDepotPath = {}
     for branch in branches.keys():
         tip = branches[branch]
-        settings = extractSettingsFromNotes(tip)
+        settings = extractLastSettingsFromNotes(tip)
         if settings.has_key("depot-paths"):
             paths = ",".join(settings["depot-paths"])
+            if branchByDepotPath.has_key(paths):
+                print "Warning: depot-path %s already covered by git branch %s" % (paths, branch)
             branchByDepotPath[paths] = "remotes/p4/" + branch
 
+    settings = extractLastSettingsFromNotes(head)
+    if settings.has_key("depot-paths"):
+        paths = ",".join(settings["depot-paths"])
+        if branchByDepotPath.has_key(paths):
+            return [branchByDepotPath[paths], settings]
+    return ["", settings]
+
+def extractLastSettingsFromNotes(head):
     settings = None
     parent = 0
     while parent < 65535:
         commit = head + "~%s" % parent
         settings = extractSettingsFromNotes(commit)
         if settings.has_key("depot-paths"):
-            paths = ",".join(settings["depot-paths"])
-            if branchByDepotPath.has_key(paths):
-                return [branchByDepotPath[paths], settings]
+            return settings
 
         parent = parent + 1
 
-    return ["", settings]
+    return settings
 
 def createOrUpdateBranchesFromOrigin(localRefPrefix = "refs/remotes/p4/", silent=True):
     if not silent:
