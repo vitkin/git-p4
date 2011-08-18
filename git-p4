@@ -1608,7 +1608,13 @@ class P4Sync(Command):
     def getBranchMapping(self):
         lostAndFoundBranches = set()
 
-        for info in self.p4.p4CmdList("branches"):
+        user = gitConfig("git-p4.branchUser")
+        if len(user) > 0:
+            command = "branches -u %s" % user
+        else:
+            command = "branches"
+
+        for info in self.p4.p4CmdList(command):
             details = self.p4.p4Cmd("branch -o \"%s\"" % info["branch"])
             viewIdx = 0
             while details.has_key("View%s" % viewIdx):
