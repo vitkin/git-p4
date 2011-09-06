@@ -1614,6 +1614,7 @@ class P4Sync(Command):
 
     def getBranchMapping(self):
         lostAndFoundBranches = set()
+        sourceBranches = {}
 
         user = gitConfig("git-p4.branchUser")
         if len(user) > 0:
@@ -1627,8 +1628,8 @@ class P4Sync(Command):
             while details.has_key("View%s" % viewIdx):
                 paths = details["View%s" % viewIdx].split(" ")
                 viewIdx = viewIdx + 1
-                # require standard //depot/foo/... //depot/bar/... mapping
-                if len(paths) != 2 or not paths[0].endswith("/...") or not paths[1].endswith("/..."):
+                # require standard //depot/foo/... //depot/bar/... mapping (or at least *.*)
+                if len(paths) != 2 or not (paths[0].endswith("/...") or paths[1].endswith("/...") or paths[0].endswith("/*.*") or paths[1].endswith("/*.*")):
                     continue
                 source = paths[0]
                 destination = paths[1]
@@ -1644,6 +1645,7 @@ class P4Sync(Command):
                         continue
 
                     self.knownBranches[destination] = source
+                    sourceBranches[source] = destination
 
                     lostAndFoundBranches.discard(destination)
 
@@ -1671,6 +1673,17 @@ class P4Sync(Command):
 
         for branch in lostAndFoundBranches:
             self.knownBranches[branch] = branch
+
+        # don't allow nested branches like foo/bla and foo as two separate branches.
+        for branch in sourceBranches.keys():
+            tmp = re.sub("^([^/]+)/.*", r'\1', branch)
+            if tmp in sourceBranches and tmp != branch:
+                del self.knownBranches[sourceBranches[branch]]
+                del sourceBranches[branch]
+        for branch in self.knownBranches.keys():
+            tmp = re.sub("^([^/]+)/.*", r'\1', branch)
+            if tmp in self.knownBranches and tmp != branch:
+                del self.knownBranches[branch]
 
     def getBranchMappingFromGitBranches(self):
         branches = p4BranchesInGit(self.importIntoRemotes)
