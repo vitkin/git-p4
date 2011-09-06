@@ -1124,6 +1124,9 @@ class P4Submit(Command):
             self.commits.append(line.strip())
         self.commits.reverse()
 
+        if self.verbose:
+            print "Commits to apply: " + self.commits
+
         self.applyCommits()
         
         system("git update-ref %s%s %s" % (getRefsPrefix(self.importIntoRemotes), self.master, self.master))
@@ -1700,7 +1703,7 @@ class P4Sync(Command):
     def importChanges(self, changes, restartImport = False):
         cnt = 0
         for change in changes:
-            description = self.p4.p4Cmd("describe %s" % change)
+            description = self.p4.p4Cmd("describe -s %s" % change)
             self.updateOptionDict(description)
 
             cnt = cnt + 1
