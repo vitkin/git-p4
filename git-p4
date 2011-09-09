@@ -1541,6 +1541,10 @@ class P4Sync(Command):
             print "Finding files belonging to labels in %s" % `self.depotPaths`
 
         for output in l:
+            if output['code'] == 'error':
+                sys.stderr.write("p4 returned an error: %s\n"
+                                 % output['data'])
+                sys.exit(1)
             label = output["label"]
             revisions = {}
             newestChange = 0
