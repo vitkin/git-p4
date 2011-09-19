@@ -1155,7 +1155,9 @@ class P4Sync(Command):
                 optparse.make_option("--keep-path", dest="keepRepoPath", action='store_true',
                                      help="Keep entire BRANCH/DIR/SUBDIR prefix during import"),
                 optparse.make_option("--use-client-spec", dest="useClientSpec", action='store_true',
-                                     help="Only sync files that are included in the Perforce Client Spec")
+                                     help="Only sync files that are included in the Perforce Client Spec"),
+                optparse.make_option("--file-dump", dest="fileDump", action='store_true',
+                                     help="Save file git-p4-dump instead of passing data through to git fast-import. Useful for large repositories.")
         ]
         self.description = """Imports from Perforce into a git repository.\n
     example:
@@ -1186,6 +1188,7 @@ class P4Sync(Command):
         self.p4BranchesInGit = []
         self.cloneExclude = []
         self.useClientSpec = False
+        self.fileDump = False
         self.clientSpecDirs = []
         self.markCounter = 1
         self.p4FileReader = P4FileReader
@@ -2002,7 +2005,10 @@ class P4Sync(Command):
         
         self.tz = "%+03d%02d" % (- time.timezone / 3600, ((- time.timezone % 3600) / 60))
 
-        self.gitStream = StringIO.StringIO()
+        if self.fileDump:
+          self.gitStream = open("git-p4-dump", "wb")
+        else:
+          self.gitStream = cStringIO.StringIO()
 
         if revision:
             self.importHeadRevision(revision)
@@ -2054,19 +2060,23 @@ class P4Sync(Command):
                         sys.stdout.write("%s " % b)
                     sys.stdout.write("\n")
 
-        if self.debug:
-            tmpfile = "%s/p4import" % tempfile.gettempdir()
-            print "Input for 'git fast-import' written to %s\n" % tmpfile
-            FILE = open(tmpfile, "w")
-            FILE.write(self.gitStream.getvalue())
-            FILE.close()
+        if self.fileDump:
+          print "Finished processing. Data may be manually utilized now (e.g. sent to git fast-import)"
+        else:
+          if self.debug:
+              tmpfile = "%s/p4import" % tempfile.gettempdir()
+              FILE = open(tmpfile, "w")
+              FILE.write(self.gitStream.getvalue())
+              FILE.close()
+              print "Input for 'git fast-import' written to %s\n" % tmpfile
 
-        importProcess = subprocess.Popen(["git", "fast-import"],
-                                         stdin=subprocess.PIPE, stdout=subprocess.PIPE,
-                                         stderr=subprocess.PIPE);
-        self.gitOutput, self.gitError = importProcess.communicate(self.gitStream.getvalue())
-        if importProcess.returncode != 0:
-            die("fast-import failed: %s" % self.gitError)
+          importProcess = subprocess.Popen(["git", "fast-import"],
+                                           stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                                           stderr=subprocess.PIPE);
+          self.gitOutput, self.gitError = importProcess.communicate(self.gitStream.getvalue())
+
+          if importProcess.returncode != 0:
+              die("fast-import failed: %s" % self.gitError)
 
         return True
 
