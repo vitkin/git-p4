@@ -4,7 +4,7 @@
 
 import unittest
 import StringIO
-import time, tempfile, shutil, shlex, subprocess, os, sys,  platform
+import time, tempfile, shutil, shlex, subprocess, os
 from gitp4 import P4Sync, P4FileReader, extractSettingsFromNotes, P4Helper, die
 
 class LargeFileWriterDouble:
@@ -270,6 +270,8 @@ some text
         finally:
             shutil.rmtree(tempdir,  True)
 
+class TestSync(unittest.TestCase):
+    
     # tests syncing with a p4 change when the git repo (with older p4 changes) was already imported
     def test_SyncWithExistingRepo(self):
         tempdir = tempfile.mkdtemp()
@@ -300,6 +302,133 @@ Note added by git-p4
 N inline :1
 data <<EOT
 [depot-paths = "//depot/": change = 33255]
+EOT
+
+''')
+            importProcess.stdin.close()
+            if importProcess.wait() != 0:
+                die("fast-import failed")
+
+            details = {'status': 'submitted', 
+                'code': 'stat', 
+                'depotFile0': '//depot/file2.py', 
+                'action0': 'add', 
+                'fileSize0': '110958', 
+                'options': '', 
+                'client': 'someclient', 
+                'user': 'someuser', 
+                'time': '1289238991', 
+                'rev0': '10', 
+                'desc': 'Test\n', 
+                'type0': 'text', 
+                'change': '33256', 
+                'digest0': 'BDA001AC8DE4B3B0484FE8252FEE73E8'}
+            users = [{'code': 'stat', 'Update': '1179412893', 'Access': '1179413508', 
+                     'User': 'someuser', 'FullName': 'Firstname Lastname', 'Email': 'firstname.lastname@example.org'}]
+
+            files = [{'action': 'add', 'path': '//depot/file2.py', 'rev': '1', 'type': 'text'}]
+            branch = 'refs/remotes/p4/master'
+            branchPrefixes = ['//depot/']
+            sync = P4Sync()
+            sync.p4 = P4HelperDouble(['33256'], {'describe 33256': details, 'users': users })
+            sync.p4FileReader = P4FileReaderDouble
+            
+            # Execute method
+            sync.run([])
+            
+            # verify results
+            settings = extractSettingsFromNotes('refs/remotes/p4/master')
+            self.assertEqual(['//depot/'], settings['depot-paths'])
+            self.assertEqual(33256, int(settings['change']))
+
+        finally:
+            shutil.rmtree(tempdir,  True)
+
+    def test_SyncWithBranchMerge(self):
+        tempdir = tempfile.mkdtemp()
+        os.chdir(tempdir)
+
+        try:
+            # fast-import git repo
+            # we have:
+            # A --- B   master
+            #   \-- C   branch1
+            # and we pretent to import merge master->branch1
+            subprocess.call(["git", "init", "--quiet"])
+            importProcess = subprocess.Popen(["git", "fast-import", "--quiet"],
+                                         stdin=subprocess.PIPE);
+            importProcess.stdin.write('''commit refs/remotes/p4/master
+mark :1
+committer <someuser@example.com> 1289238991 +0100
+data <<EOT
+Test
+
+EOT
+
+M 100644 inline file.txt
+data <<EOT
+Line 1
+
+EOT
+
+reset refs/notes/git-p4
+commit refs/notes/git-p4
+mark :2
+committer <someuser@example.com> 1289238991 +0100
+data 21
+Note added by git-p4
+N inline :1
+data <<EOT
+[depot-paths = "//depot/": change = 33255]
+EOT
+
+commit refs/remotes/p4/branch1
+mark :3
+committer <someuser@example.com> 1289238991 +0100
+data <<EOT
+New branch branch1
+
+EOT
+
+from :1
+
+commit refs/notes/git-p4
+mark :4
+committer <someuser@example.com> 1289238991 +0100
+data 21
+Note added by git-p4
+from :2
+N inline :3
+data <<EOT
+[depot-paths = "//depot/": change = 33256]
+EOT
+
+commit refs/remotes/p4/master
+mark :5
+committer <someuser@example.com> 1289238991 +0100
+data <<EOT
+Second commit
+
+EOT
+
+from :1
+M 100644 inline file.txt
+data <<EOT
+Line 1
+Line 2
+
+EOT
+
+reset refs/notes/git-p4
+commit refs/notes/git-p4
+mark :6
+committer <someuser@example.com> 1289238991 +0100
+data 21
+Note added by git-p4
+from :4
+N inline :5
+data <<EOT
+[depot-paths = "//depot/": change = 33257]
 EOT
 
 ''')
