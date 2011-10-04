@@ -86,7 +86,7 @@ class P4Helper:
 
         real_cmd += "-d \"%s\" %s" % (os.getcwd(), cmd)
         if verbose:
-            print real_cmd
+            print "THE COMMAND IS '" + real_cmd + "'"
         return real_cmd
 
     def p4_write_pipe(self, c, str):
@@ -133,12 +133,12 @@ class P4Helper:
             if p4Type[-1] == "+":
                 p4Type = p4Type[0:-1]
 
-        self.p4_system("reopen -t %s %s" % (p4Type, escapeString(file)))
+        self.p4_system("reopen -t %s \"%s\"" % (p4Type, file))
 
     def getP4OpenedType(self, file):
         # Returns the perforce file type for the given file.
 
-        result = self.p4_read_pipe("opened %s" % file)
+        result = self.p4_read_pipe("opened \"%s\"" % file)
         match = re.match(".*\((.+)\)\r?$", result)
         if match:
             return match.group(1)
@@ -1079,14 +1079,18 @@ class P4Submit(Command):
         self.p4.p4_system("sync ...")
 
     def run(self, args):
-        if len(args) == 0:
-            self.master = currentGitBranch()
-            if len(self.master) == 0 or not gitBranchExists("refs/heads/%s" % self.master):
-                die("Detecting current git branch failed!")
-        elif len(args) == 1:
-            self.master = args[0]
-        else:
-            return False
+#        if len(args) == 0:
+            # note: this part doesn't work so well.
+            # so forcing it to be "master" if not otherwise explained.
+#            self.master = "master"
+#            self.master = currentGitBranch()
+#            if len(self.master) == 0 or not gitBranchExists("refs/heads/%s" % self.master):
+#                die("Detecting current git branch failed!")
+#        elif len(args) == 1:
+#            self.master = args[0]
+#        else:
+#            return False
+        self.master = "master"
 
         allowSubmit = gitConfig("git-p4.allowSubmit")
         if len(allowSubmit) > 0 and not self.master in allowSubmit.split(","):
