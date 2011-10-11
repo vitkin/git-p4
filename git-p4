@@ -170,6 +170,11 @@ class P4Helper:
         try:
             while True:
                 entry = marshal.load(p4.stdout)
+                
+                if entry['code'] == 'error':
+                    sys.stderr.write("p4 returned an error: %s\n" % entry['data'])
+                    sys.exit(1)
+                
                 result.append(entry)
         except EOFError:
             pass
@@ -229,7 +234,7 @@ class P4Helper:
 
     def p4ChangesForPaths(self, depotPaths, changeRange):
         assert depotPaths
-        output = self.p4_read_pipe_lines("changes " + ' '.join (["%s...%s" % (p, changeRange)
+        output = self.p4_read_pipe_lines("changes " + ' '.join (['"%s..."%s' % (p, changeRange)
                                                             for p in depotPaths]))
 
         changes = []
@@ -405,7 +410,7 @@ class P4CmdReader:
             raise StopIteration
 
 def currentGitBranch():
-    return read_pipe("git name-rev HEAD").split(" ")[1].strip()
+    return read_pipe("git symbolic-ref -q HEAD")[len('refs/heads/'):].strip()
 
 def isValidGitDir(path):
     if (os.path.exists(path + "/HEAD")
@@ -895,8 +900,8 @@ class P4Submit(Command):
     def applyPatch(self, id):
         diffcmd = "git format-patch -k --stdout \"%s^\"..\"%s\"" % (id, id)
         patchcmd = diffcmd + " | git apply "
-        tryPatchCmd = patchcmd + "--check -"
-        applyPatchCmd = patchcmd + "--check --apply -"
+        tryPatchCmd = patchcmd + "--check --ignore-whitespace --ignore-space-change -"
+        applyPatchCmd = patchcmd + "--check --apply --ignore-whitespace --ignore-space-change -"
 
         if os.system(tryPatchCmd) != 0:
             print "Unfortunately applying the change failed!"
@@ -2172,7 +2177,7 @@ class P4Sync(Command):
 
         if len(args) == 0 and self.depotPaths:
             if not self.silent:
-                print "Depot paths: %s" % ' '.join(self.depotPaths)
+                print "Depot paths: \n%s" % '\n'.join(self.depotPaths)
         else:
             if self.depotPaths and self.depotPaths != args and not self.detectBranches:
                 print ("previous import used depot path %s and now %s was specified. "
