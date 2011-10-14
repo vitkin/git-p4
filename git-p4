@@ -1106,6 +1106,9 @@ class P4Submit(Command):
 
         self.clientPath = self.p4.p4Where(self.depotPath)
 
+        if self.isWindows:
+        	self.clientPath = self.clientPath.replace("\\", "/")
+
         if len(self.clientPath) == 0:
             print "Error: Cannot locate perforce checkout of %s in client view" % self.depotPath
             sys.exit(128)
