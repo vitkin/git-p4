@@ -138,7 +138,7 @@ class P4Helper:
     def getP4OpenedType(self, file):
         # Returns the perforce file type for the given file.
 
-        result = self.p4_read_pipe("opened %s" % file)
+        result = self.p4_read_pipe("opened %s" % escapeString(file))
         match = re.match(".*\((.+)\)\r?$", result)
         if match:
             return match.group(1)
@@ -249,8 +249,8 @@ class P4Helper:
         return dest
 
 def escapeString(str):
-	# Escape paren and backslash characters in string
-	return re.sub("\(", "\\\(", re.sub("\)", "\\\)", re.sub(r"\\", r"\\\\", str)))
+	# Escape paren, space and backslash characters in string
+	return re.sub(" ", "\\ ", re.sub("\(", "\\\(", re.sub("\)", "\\\)", re.sub(r"\\", r"\\\\", str))))
 
 def getRefsPrefix(importIntoRemotes):
     if importIntoRemotes:
