@@ -1558,6 +1558,8 @@ class P4Sync(Command):
                 self.users[entry[0]] = entry[1]
         except IOError:
             self.getUserMapFromPerforceServer()
+        except IndexError:
+            self.getUserMapFromPerforceServer()
 
     def getLabels(self):
         self.labels = {}
