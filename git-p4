@@ -62,7 +62,7 @@ class P4Helper:
         location. It means that hooking into the environment, or other configuration
         can be done more easily.
         """
-        real_cmd = "%s " % "p4"
+        real_cmd = "p4 "
 
         user = gitConfig("git-p4.user")
         if len(user) > 0:
@@ -133,12 +133,11 @@ class P4Helper:
             if p4Type[-1] == "+":
                 p4Type = p4Type[0:-1]
 
-        self.p4_system("reopen -t %s %s" % (p4Type, escapeString(file)))
+        self.p4_system("reopen -t %s \"%s\"" % (p4Type, escapeStringP4(file)))
 
     def getP4OpenedType(self, file):
         # Returns the perforce file type for the given file.
-
-        result = self.p4_read_pipe("opened %s" % escapeString(file))
+        result = self.p4_read_pipe("opened \"%s\"" % escapeStringP4only(file))
         match = re.match(".*\((.+)\)\r?$", result)
         if match:
             return match.group(1)
@@ -243,14 +242,24 @@ class P4Helper:
         
     def integrateFile(self, diff, changelist=""):
         src, dest = diff['src'], diff['dst']
-        self.p4_system("integrate %s -Dt \"%s\" \"%s\"" % (changelist, src, dest))
-        self.p4_system("edit %s \"%s\"" % (changelist, dest))
+        self.p4_system("integrate %s -Dt \"%s\" \"%s\"" % (changelist, src, escapeStringP4(dest)))
+        self.p4_system("edit %s \"%s\"" % (changelist, escapeStringP4(dest)))
         os.unlink(dest)
         return dest
 
+
+def escapeStringP4only(str):
+    # Escape characters that have a special meaning in p4 (without normal escaping)
+    return re.sub(r"@", r"%40", re.sub(r"#", r"%23", re.sub(r"\*", r"%2A", re.sub(r"%", r"%25", str))))
+
+def escapeStringP4(str):
+    # Escape characters that have a special meaning in p4 (plus the normal escaping)
+    return re.sub(r"\$", r"\\$", escapeStringP4only(str))
+
 def escapeString(str):
-	# Escape paren, space and backslash characters in string
-	return re.sub(" ", "\\ ", re.sub("\(", "\\\(", re.sub("\)", "\\\)", re.sub(r"\\", r"\\\\", str))))
+    # Escape dollar sign and star characters in string
+    # Note: we don't need to escape parens, space and backslash if the string is enclosed in quotes
+    return re.sub(r"\$", r"\\$", re.sub(r"\*", r"\\*", str))
 
 def getRefsPrefix(importIntoRemotes):
     if importIntoRemotes:
@@ -915,10 +924,10 @@ class P4Submit(Command):
 
     def revertCommit(self):
         for f in self.editedFiles:
-            self.p4.p4_system("revert \"%s\"" % f);
+            self.p4.p4_system("revert \"%s\"" % escapeStringP4(f));
         for f in self.filesToAdd:
-            self.p4.p4_system("revert \"%s\"" % f);
-            system("rm %s" %f)
+            self.p4.p4_system("revert \"%s\"" % escapeStringP4(f));
+            system("rm %s" % escapeString(f))
 
     def setExecutableBits(self):
         # Set/clear executable bits
@@ -992,12 +1001,14 @@ class P4Submit(Command):
 
     def addOrDeleteFiles(self, changelist=""):
         for f in self.filesToAdd:
-            self.p4.p4_system("add %s \"%s\"" % (changelist, f))
+            # don't do p4 escaping when adding files (http://www.perforce.com/perforce/doc.current/manuals/cmdref/o.fspecs.html)
+            # In fact, we only need to escape the dollar sign
+            self.p4.p4_system("add -f %s \"%s\"" % (changelist, re.sub(r"\$", r"\\$", f)))
             if f in self.editedFiles:
-                self.p4.p4_system("edit %s \"%s\"" % (changelist, f))
+                self.p4.p4_system("edit %s \"%s\"" % (changelist, escapeStringP4(f)))
         for f in self.filesToDelete:
-            self.p4.p4_system("revert %s \"%s\"" % (changelist, f))
-            self.p4.p4_system("delete %s \"%s\"" % (changelist, f))
+            self.p4.p4_system("revert %s \"%s\"" % (changelist, escapeStringP4(f)))
+            self.p4.p4_system("delete %s \"%s\"" % (changelist, escapeStringP4(f)))
 
     def addFilesToChangelist(self, id, diffOpts):
         self.filesToAdd = set()
@@ -1006,7 +1017,7 @@ class P4Submit(Command):
         self.filesToChangeExecBit = {}
         self.getChangedFiles(diffOpts, id)
         for f in self.editedFiles:
-            self.p4.p4_system("edit \"%s\"" % f)
+            self.p4.p4_system("edit \"%s\"" % escapeStringP4(f))
 
     def getChangedFiles(self, diffOpts, id):
         diff = read_pipe_lines("git diff-tree -r %s \"%s^\" \"%s\"" % (diffOpts, id, id))
@@ -1128,7 +1139,7 @@ class P4Submit(Command):
         self.commits.reverse()
 
         if self.verbose:
-            print "Commits to apply: " + self.commits
+            print "Commits to apply: %s" % self.commits
 
         self.applyCommits()
         
@@ -2240,7 +2251,7 @@ class P4Shelve(P4Submit):
 
     def submitCommit(self, submitTemplate):
         self.p4.p4_write_pipe("shelve -r -i", submitTemplate)
-        self.p4.p4_system("revert -c %s %s..." % (self.clnumber, self.depotPath))
+        self.p4.p4_system("revert -c %s \"%s...\"" % (self.clnumber, escapeStringP4(self.depotPath)))
         print("")
         print("Shelved files in Perforce changelist # %s" % self.clnumber)
 
@@ -2286,7 +2297,7 @@ class P4Shelve(P4Submit):
             self.getChangedFiles(diffOpts, commit)
         for editedFile in self.editedFiles:
             if editedFile not in self.filesToAdd:
-                self.p4.p4_system("edit -c %s \"%s\"" % (self.clnumber, editedFile))
+                self.p4.p4_system("edit -c %s \"%s\"" % (self.clnumber, escapeStringP4(editedFile)))
 
         for commit in self.commits:
             if not self.applyPatch(commit):
