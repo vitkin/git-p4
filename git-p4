@@ -247,6 +247,11 @@ class P4Helper:
         os.unlink(dest)
         return dest
 
+def escapeStringP4ForAdd(str):
+    # On Windows, don't escape dollar sign
+    if (platform.system() == "Windows"):
+        return str
+    return escapeDollarSign(str)
 
 def escapeStringP4only(str):
     # Escape characters that have a special meaning in p4 (without normal escaping)
@@ -254,12 +259,16 @@ def escapeStringP4only(str):
 
 def escapeStringP4(str):
     # Escape characters that have a special meaning in p4 (plus the normal escaping)
-    return re.sub(r"\$", r"\\$", escapeStringP4only(str))
+    return escapeStringP4only(escapeDollarSign(str))
 
 def escapeString(str):
     # Escape dollar sign and star characters in string
     # Note: we don't need to escape parens, space and backslash if the string is enclosed in quotes
-    return re.sub(r"\$", r"\\$", re.sub(r"\*", r"\\*", str))
+    return re.sub(r"\*", r"\\*", escapeDollarSign(str))
+
+def escapeDollarSign(str):
+    # Escape dollar sign
+    return re.sub(r"\$", r"\\$", str)
 
 def getRefsPrefix(importIntoRemotes):
     if importIntoRemotes:
@@ -1003,7 +1012,7 @@ class P4Submit(Command):
         for f in self.filesToAdd:
             # don't do p4 escaping when adding files (http://www.perforce.com/perforce/doc.current/manuals/cmdref/o.fspecs.html)
             # In fact, we only need to escape the dollar sign
-            self.p4.p4_system("add -f %s \"%s\"" % (changelist, re.sub(r"\$", r"\\$", f)))
+            self.p4.p4_system("add -f %s \"%s\"" % (changelist, escapeStringP4ForAdd(f)))
             if f in self.editedFiles:
                 self.p4.p4_system("edit %s \"%s\"" % (changelist, escapeStringP4(f)))
         for f in self.filesToDelete:
