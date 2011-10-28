@@ -248,9 +248,6 @@ class P4Helper:
         return dest
 
 def escapeStringP4ForAdd(str):
-    # On Windows, don't escape dollar sign
-    if (platform.system() == "Windows"):
-        return str
     return escapeDollarSign(str)
 
 def escapeStringP4only(str):
@@ -268,6 +265,9 @@ def escapeString(str):
 
 def escapeDollarSign(str):
     # Escape dollar sign
+    # On Windows, don't escape dollar sign
+    if (platform.system() == "Windows"):
+        return str
     return re.sub(r"\$", r"\\$", str)
 
 def getRefsPrefix(importIntoRemotes):
