@@ -31,12 +31,12 @@ class LargeFileWriter:
     When writing to the wrapped file object, writes are broken up so that only 10MB are written at
     a time. Otherwise, there is IO exception on Windows.
     """
-    def __init__(self, filedesc):
+    def __init__(self, filedesc, debug = None):
         self.read = filedesc.read
         self.flush = filedesc.flush
         self.close = filedesc.close
         self.filedesc = filedesc
-        self.debug = StringIO.StringIO()
+        self.debug = debug
 
     def write(self, text):
         chunk = 10*1024*1024 # I don't know how high we can go before the bug is triggered, so we
@@ -49,7 +49,8 @@ class LargeFileWriter:
         if len(text):    
             self.filedesc.write(text[:chunk])
             self.filedesc.flush()
-            self.debug.write(text[:chunk])
+            if self.debug is not None:
+                self.debug.write(text[:chunk])
 
 class P4Helper:
     """ Encapsulates P4 methods so that they can be replaced for testing purposes
@@ -847,7 +848,7 @@ class P4Submit(Command):
                 continue
 
             if inDescriptionSection:
-                if line.startswith("Files:"):
+                if line.startswith("Files:") or line.startswith("Jobs:"):
                     inDescriptionSection = False
                 else:
                     continue
@@ -1748,67 +1749,63 @@ class P4Sync(Command):
                 sys.stdout.write("\rImporting revision %s (%s%%)\n" % (change, cnt * 100 / len(changes)))
                 sys.stdout.flush()
 
-            try:
-                if self.detectBranches:
-                    branches = self.splitFilesIntoBranches(description)
-                    for branch in branches.keys():
-                        ## HACK  --hwn
-                        branchPrefix = self.depotPaths[0] + branch + "/"
+            if self.detectBranches:
+                branches = self.splitFilesIntoBranches(description)
+                for branch in branches.keys():
+                    ## HACK  --hwn
+                    branchPrefix = self.depotPaths[0] + branch + "/"
 
-                        parent = ""
+                    parent = ""
 
-                        filesForCommit = branches[branch]
+                    filesForCommit = branches[branch]
 
-                        if self.verbose:
-                            print "branch is %s" % branch
+                    if self.verbose:
+                        print "branch is %s" % branch
 
-                        self.updatedBranches.add(branch)
+                    self.updatedBranches.add(branch)
 
-                        if branch not in self.createdBranches:
-                            self.createdBranches.add(branch)
-                            parent = self.knownBranches[branch]
-                            if parent == branch:
-                                parent = ""
-                            else:
-                                fullBranch = self.projectName + branch
-                                if fullBranch not in self.p4BranchesInGit:
-                                    if not self.silent:
-                                        print("\n    Importing new branch %s" % fullBranch);
-                                    if self.importNewBranch(branch, change - 1):
-                                        parent = ""
-                                        self.p4BranchesInGit.append(fullBranch)
-                                    if not self.silent:
-                                        print("\n    Resuming with change %s" % change);
+                    if branch not in self.createdBranches:
+                        self.createdBranches.add(branch)
+                        parent = self.knownBranches[branch]
+                        if parent == branch:
+                            parent = ""
+                        else:
+                            fullBranch = self.projectName + branch
+                            if fullBranch not in self.p4BranchesInGit:
+                                if not self.silent:
+                                    print("\n    Importing new branch %s" % fullBranch);
+                                if self.importNewBranch(branch, change - 1):
+                                    parent = ""
+                                    self.p4BranchesInGit.append(fullBranch)
+                                if not self.silent:
+                                    print("\n    Resuming with change %s" % change);
 
-                                if self.verbose:
-                                    print "parent determined through known branches: %s" % parent
+                            if self.verbose:
+                                print "parent determined through known branches: %s" % parent
 
-                        branch = self.gitRefForBranch(branch)
-                        parent = self.gitRefForBranch(parent)
+                    branch = self.gitRefForBranch(branch)
+                    parent = self.gitRefForBranch(parent)
 
-                        if self.verbose:
-                            print "looking for initial parent for %s; current parent is %s" % (branch, parent)
+                    if self.verbose:
+                        print "looking for initial parent for %s; current parent is %s" % (branch, parent)
 
-                        if len(parent) == 0 and branch in self.initialParents:
-                            parent = self.initialParents[branch]
-                            del self.initialParents[branch]
+                    if len(parent) == 0 and branch in self.initialParents:
+                        parent = self.initialParents[branch]
+                        del self.initialParents[branch]
 
-                        self.commit(description, filesForCommit, branch, [branchPrefix], parent)
+                    self.commit(description, filesForCommit, branch, [branchPrefix], parent)
+            else:
+                files = self.extractFilesFromCommit(description)
+                if (cnt == 1 and restartImport):
+                    parent = "%s^0" % self.branch
+                    noteParent = "refs/notes/git-p4^0"
+                    self.commit(description, files, self.branch, self.depotPaths,
+                                parent, noteParent)
                 else:
-                    files = self.extractFilesFromCommit(description)
-                    if (cnt == 1 and restartImport):
-                        parent = "%s^0" % self.branch
-                        noteParent = "refs/notes/git-p4^0"
-                        self.commit(description, files, self.branch, self.depotPaths,
-                                    parent, noteParent)
-                    else:    
-                        self.commit(description, files, self.branch, self.depotPaths,
-                                    self.initialParent, self.initialNoteParent)
-                    self.initialParent = ""
-                    self.initialNoteParent = ""
-            except IOError:
-                print self.gitError.read()
-                sys.exit(1)
+                    self.commit(description, files, self.branch, self.depotPaths,
+                                self.initialParent, self.initialNoteParent)
+                self.initialParent = ""
+                self.initialNoteParent = ""
 
     def importHeadRevision(self, revision):
         print "Doing initial import of %s from revision %s into %s" % (' '.join(self.depotPaths), revision, self.branch)
@@ -1847,11 +1844,7 @@ class P4Sync(Command):
 
         details["change"] = newestRevision
         self.updateOptionDict(details)
-        #try:
         self.commit(details, self.extractFilesFromCommit(details), self.branch, self.depotPaths)
-        #except IOError:
-        #   print "IO error with git fast-import. Is your git version recent enough?"
-        #    print self.gitError.read()
 
 
     def getClientSpec(self):
@@ -2036,77 +2029,85 @@ class P4Sync(Command):
         self.tz = "%+03d%02d" % (- time.timezone / 3600, ((- time.timezone % 3600) / 60))
 
         if self.fileDump:
-          self.gitStream = open("git-p4-dump", "wb")
+            self.gitStream = open("git-p4-dump", "wb")
         else:
-          self.gitStream = cStringIO.StringIO()
-
-        if revision:
-            self.importHeadRevision(revision)
-        else:
-            changes = []
-
-            if len(self.changesFile) > 0:
-                output = open(self.changesFile).readlines()
-                changeSet = set()
-                for line in output:
-                    changeSet.add(int(line))
-
-                for change in changeSet:
-                    changes.append(change)
-
-                changes.sort()
+            if self.debug:
+                tmpfile = "%s/p4import" % tempfile.gettempdir()
+                print "Writing input for 'git fast-import' to %s\n" % tmpfile
+                debugDumpFile = open(tmpfile, "w")
             else:
-                if self.verbose:
-                    print "Getting p4 changes for %s...%s" % (', '.join(self.depotPaths),
-                                                              self.changeRange)
-                changes = self.p4.p4ChangesForPaths(self.depotPaths, self.changeRange)
-                if self.verbose:
-                    print "Found %i changes" % len(changes)
-                if len(self.maxChanges) > 0:
-                    changes = changes[:min(int(self.maxChanges), len(changes))]
+                debugDumpFile = None
 
-            if len(changes) == 0:
+            importProcess = subprocess.Popen(["git", "fast-import"],
+                                             stdin=subprocess.PIPE, stdout=subprocess.PIPE)
+            self.gitStream = LargeFileWriter(importProcess.stdin, debugDumpFile)
+
+        try:
+            if revision:
+                self.importHeadRevision(revision)
+            else:
+                changes = []
+
+                if len(self.changesFile) > 0:
+                    output = open(self.changesFile).readlines()
+                    changeSet = set()
+                    for line in output:
+                        changeSet.add(int(line))
+
+                    for change in changeSet:
+                        changes.append(change)
+
+                    changes.sort()
+                else:
+                    if self.verbose:
+                        print "Getting p4 changes for %s...%s" % (', '.join(self.depotPaths),
+                                                                  self.changeRange)
+                    changes = self.p4.p4ChangesForPaths(self.depotPaths, self.changeRange)
+                    if self.verbose:
+                        print "Found %i changes" % len(changes)
+                    if len(self.maxChanges) > 0:
+                        changes = changes[:min(int(self.maxChanges), len(changes))]
+
+                if len(changes) == 0:
+                    if not self.silent:
+                        print "No changes to import!"
+                    return True
+
+                if not self.silent and not self.detectBranches:
+                    print "Import destination: %s" % self.branch
+
+                self.updatedBranches = set()
+                # http://www.kerneltrap.com/mailarchive/git/2009/7/7/6203
+                # To restart an import, you need to use the from command in the
+                # first commit of that session, e.g. to restart an import on
+                # refs/heads/master use:
+                #
+                #  from refs/heads/master^0
+                self.importChanges(changes, self.restartImport)
+
                 if not self.silent:
-                    print "No changes to import!"
-                return True
+                    print ""
+                    if len(self.updatedBranches) > 0:
+                        sys.stdout.write("Updated branches: ")
+                        for b in self.updatedBranches:
+                            sys.stdout.write("%s " % b)
+                        sys.stdout.write("\n")
 
-            if not self.silent and not self.detectBranches:
-                print "Import destination: %s" % self.branch
+            self.gitStream.flush()
 
-            self.updatedBranches = set()
-            # http://www.kerneltrap.com/mailarchive/git/2009/7/7/6203
-            # To restart an import, you need to use the from command in the
-            # first commit of that session, e.g. to restart an import on
-            # refs/heads/master use:
-            #
-            #  from refs/heads/master^0
-            self.importChanges(changes, self.restartImport)
-
-            if not self.silent:
-                print ""
-                if len(self.updatedBranches) > 0:
-                    sys.stdout.write("Updated branches: ")
-                    for b in self.updatedBranches:
-                        sys.stdout.write("%s " % b)
-                    sys.stdout.write("\n")
+        except IOError:
+            die("fast-import failed")
 
         if self.fileDump:
-          print "Finished processing. Data may be manually utilized now (e.g. sent to git fast-import)"
+            print "Finished processing. Data may be manually utilized now (e.g. sent to git fast-import)"
         else:
-          if self.debug:
-              tmpfile = "%s/p4import" % tempfile.gettempdir()
-              FILE = open(tmpfile, "w")
-              FILE.write(self.gitStream.getvalue())
-              FILE.close()
-              print "Input for 'git fast-import' written to %s\n" % tmpfile
+            if debugDumpFile:
+                debugDumpFile.close()
 
-          importProcess = subprocess.Popen(["git", "fast-import"],
-                                           stdin=subprocess.PIPE, stdout=subprocess.PIPE,
-                                           stderr=subprocess.PIPE);
-          self.gitOutput, self.gitError = importProcess.communicate(self.gitStream.getvalue())
+            importProcess.communicate()
 
-          if importProcess.returncode != 0:
-              die("fast-import failed: %s" % self.gitError)
+            if importProcess.returncode != 0:
+                die("fast-import failed")
 
         return True
 
