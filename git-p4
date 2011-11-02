@@ -828,6 +828,7 @@ class P4Submit(Command):
         self.importIntoRemotes = True
         if gitConfig("git-p4.importIntoRemotes") == "false":
             self.importIntoRemotes = False
+        self.abort = False
 
     def check(self):
         if len(self.p4.p4CmdList("opened ...")) > 0:
@@ -978,8 +979,11 @@ class P4Submit(Command):
             response = "y"
             if os.stat(fileName).st_mtime <= mtime:
                 response = "x"
-                while response != "y" and response != "n":
-                    response = raw_input("Submit template unchanged. Submit anyway? [y]es, [n]o (skip this patch) ")
+                while response != "y" and response != "a":
+                    print ""
+                    response = raw_input("Submit template unchanged. Submit anyway? [y]es, [a]bort ")
+                if response == "a":
+                    self.abort = True;
         else:
             response = "y"
 
@@ -1089,7 +1093,7 @@ class P4Submit(Command):
             system(cmd)
 
     def applyCommits(self):
-        while len(self.commits) > 0:
+        while len(self.commits) > 0 and self.abort == False:
             commit = self.commits[0]
             self.commits = self.commits[1:]
             self.applyCommit(commit)
@@ -1152,11 +1156,12 @@ class P4Submit(Command):
 
         self.applyCommits()
         
-        system("git update-ref %s%s %s" % (getRefsPrefix(self.importIntoRemotes), self.master, self.master))
+        if self.abort == False:
+            system("git update-ref %s%s %s" % (getRefsPrefix(self.importIntoRemotes), self.master, self.master))
 
-        if len(self.commits) == 0:
-            print "All changes applied!"
-            chdir(self.oldWorkingDirectory)
+            if len(self.commits) == 0:
+                print "All changes applied!"
+                chdir(self.oldWorkingDirectory)
 
         return True
 
