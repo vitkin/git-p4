@@ -1192,7 +1192,9 @@ class P4Sync(Command):
                 optparse.make_option("--use-client-spec", dest="useClientSpec", action='store_true',
                                      help="Only sync files that are included in the Perforce Client Spec"),
                 optparse.make_option("--file-dump", dest="fileDump", action='store_true',
-                                     help="Save file git-p4-dump instead of passing data through to git fast-import. Useful for large repositories.")
+                                     help="Save file git-p4-dump instead of passing data through to git fast-import. Useful for large repositories."),
+                optparse.make_option("--no-getuserlist", dest="getUserList", action='store_false',
+                                     help="Don't get the list of users from Perforce if a commit author can't be found. Trust cached userlist instead.")
         ]
         self.description = """Imports from Perforce into a git repository.\n
     example:
@@ -1233,6 +1235,7 @@ class P4Sync(Command):
         self.initialParent = ""
         self.initialNoteParent = ""
         self.previousDepotPaths = []
+        self.getUserList = True
 
         self.knownBranches = {}
         self.initialParents = {}
@@ -1400,7 +1403,7 @@ class P4Sync(Command):
         self.gitStream.write("mark :%s\n" % self.markCounter)
         self.committedChanges.add(int(details["change"]))
         committer = ""
-        if author not in self.users:
+        if author not in self.users and self.getUserList:
             self.getUserMapFromPerforceServer()
         if author in self.users:
             committer = "%s %s %s" % (self.users[author], epoch, self.tz)
