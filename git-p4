@@ -1569,9 +1569,15 @@ class P4Sync(Command):
                 entry = line.strip().split("\t")
                 self.users[entry[0]] = entry[1]
         except IOError:
-            self.getUserMapFromPerforceServer()
+            if self.verbose:
+                print "IO Error processing line %s" % line
+            if self.getUserList:
+                self.getUserMapFromPerforceServer()
         except IndexError:
-            self.getUserMapFromPerforceServer()
+            if self.verbose:
+                print "Index Error processing line %s" % line
+            if self.getUserList:
+                self.getUserMapFromPerforceServer()
 
     def getLabels(self):
         self.labels = {}
