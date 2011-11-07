@@ -1503,16 +1503,13 @@ class P4Sync(Command):
             if self.verbose:
                 print "Change %s is labeled %s" % (change, labelDetails)
 
-            files = self.p4.p4CmdList("files " + ' '.join (["%s...@%s" % (p, change)
-                                                    for p in branchPrefixes]))
+            files = self.p4.p4CmdList("files " +  ' '.join (['"%s@%s"' % (p, change)
+                                                for p in labelDetails["Views"]]))
+            cleanedFiles = {}
+            for info in files:
+                cleanedFiles[info["depotFile"]] = info["rev"]
 
-            if len(files) == len(labelRevisions):
-
-                cleanedFiles = {}
-                for info in files:
-                    if info["action"] in self.delete_actions:
-                        continue
-                    cleanedFiles[info["depotFile"]] = info["rev"]
+            if len(cleanedFiles) == len(labelRevisions):
 
                 if cleanedFiles == labelRevisions:
                     self.gitStream.write("tag tag_%s\n" % labelDetails["label"])
@@ -1589,6 +1586,14 @@ class P4Sync(Command):
                                  % output['data'])
                 sys.exit(1)
             label = output["label"]
+            details = self.p4.p4Cmd("label -o \"%s\"" % label)
+            viewIdx = 0
+            views = []
+            while details.has_key("View%s" % viewIdx):
+                views.append(details["View%s" % viewIdx])
+                viewIdx = viewIdx + 1
+                output["Views"] = views
+
             revisions = {}
             newestChange = 0
             if self.verbose:
