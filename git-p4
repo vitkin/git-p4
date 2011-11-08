@@ -1653,7 +1653,7 @@ class P4Sync(Command):
                 paths = details["View%s" % viewIdx].split(" ")
                 viewIdx = viewIdx + 1
                 # require standard //depot/foo/... //depot/bar/... mapping (or at least *.*)
-                if len(paths) != 2 or not (paths[0].endswith("/...") or paths[1].endswith("/...") or paths[0].endswith("/*.*") or paths[1].endswith("/*.*")):
+                if len(paths) != 2 or not ( paths[0].endswith("/...") or paths[1].endswith("/...") or paths[0].endswith("/*.*") or paths[1].endswith("/*.*") ):
                     continue
                 source = paths[0]
                 destination = paths[1]
