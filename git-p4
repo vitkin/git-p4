@@ -2307,10 +2307,14 @@ class P4Clone(P4Sync):
             return False
         if self.branch != "master":
             masterbranch = getRefsPrefix(self.importIntoRemotes) + "master"
+            branchname = "master"
+            if self.detectBranches:
+                masterbranch = self.branch
+                branchname = self.branch[self.branch.strip().rfind("/") + 1:]
             if gitBranchExists(masterbranch):
-                system("git branch master %s" % masterbranch)
+                system("git branch %s %s" % (branchname, masterbranch))
                 if not self.cloneBare:
-                    system("git checkout -f")
+                    system("git checkout -f %s" % branchname)
             else:
                 print "Could not detect main branch. No checkout/master branch created."
 
