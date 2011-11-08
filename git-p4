@@ -1194,7 +1194,9 @@ class P4Sync(Command):
                 optparse.make_option("--file-dump", dest="fileDump", action='store_true',
                                      help="Save file git-p4-dump instead of passing data through to git fast-import. Useful for large repositories."),
                 optparse.make_option("--no-getuserlist", dest="getUserList", action='store_false',
-                                     help="Don't get the list of users from Perforce if a commit author can't be found. Trust cached userlist instead.")
+                                     help="Don't get the list of users from Perforce if a commit author can't be found. Trust cached userlist instead."),
+                optparse.make_option("--fuzzy-tags", dest="fuzzyTags", action='store_true',
+                                     help="Create tag even if number of files doesn't match when all revisions of files in tag match.")
         ]
         self.description = """Imports from Perforce into a git repository.\n
     example:
@@ -1236,6 +1238,7 @@ class P4Sync(Command):
         self.initialNoteParent = ""
         self.previousDepotPaths = []
         self.getUserList = True
+        self.fuzzyTags = False
 
         self.knownBranches = {}
         self.initialParents = {}
@@ -1509,9 +1512,16 @@ class P4Sync(Command):
             for info in files:
                 cleanedFiles[info["depotFile"]] = info["rev"]
 
-            if len(cleanedFiles) == len(labelRevisions):
+            if len(cleanedFiles) == len(labelRevisions) or self.fuzzyTags:
 
-                if cleanedFiles == labelRevisions:
+                if self.fuzzyTags and len(cleanedFiles) != len(labelRevisions):
+                    for fileInLabel in labelRevisions:
+                        if not cleanedFiles.has_key(fileInLabel) or cleanedFiles[fileInLabel] != labelRevisions[fileInLabel]:
+                            print ("Tag %s does not match with change %s: revision of file %s different" 
+                                   % (labelDetails["label"], change, fileInLabel))
+                            return
+
+                if cleanedFiles == labelRevisions or self.fuzzyTags:
                     self.gitStream.write("tag tag_%s\n" % labelDetails["label"])
                     self.gitStream.write("from %s\n" % branch)
 
@@ -1524,7 +1534,7 @@ class P4Sync(Command):
                     self.gitStream.write("tagger %s\n" % tagger)
                     self.gitStream.write("data <<EOT\n")
                     self.gitStream.write(labelDetails["Description"])
-                    self.gitStream.write("EOT\n\n")
+                    self.gitStream.write("\nEOT\n\n")
 
                 else:
                     if not self.silent:
@@ -1533,8 +1543,8 @@ class P4Sync(Command):
 
             else:
                 if not self.silent:
-                    print ("Tag %s does not match with change %s: file count is different."
-                           % (labelDetails["label"], change))
+                    print ("Tag %s does not match with change %s: file count is different (%s vs. %s from label)."
+                           % (labelDetails["label"], change, len(cleanedFiles), len(labelRevisions)))
 
     def getUserCacheFilename(self):
         home = os.environ.get("HOME", os.environ.get("USERPROFILE"))
