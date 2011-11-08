@@ -1496,7 +1496,7 @@ class P4Sync(Command):
             self.gitStream.write(": options = %s" % details['options'])
         self.gitStream.write("]\nEOT\n\n")
         
-        self.markCounter += 1
+        self.markCounter += 2
         change = int(details["change"])
 
         if self.labels.has_key(change):
