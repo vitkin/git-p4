@@ -1999,6 +1999,10 @@ class P4Sync(Command):
                 self.changeRange = p[atIdx:]
                 if self.changeRange == "@all":
                     self.changeRange = ""
+                elif self.changeRange == "@1":
+                    # this is the very first changelist, so we'll import as
+                    # a regular change
+                    revision = ""
                 elif ',' not in self.changeRange:
                     revision = self.changeRange
                     self.changeRange = ""
