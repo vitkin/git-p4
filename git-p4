@@ -1172,6 +1172,7 @@ class P4Submit(Command):
 
 class P4Sync(Command):
     delete_actions = ( "delete", "move/delete", "purge" )
+    merge_actions = ( "branch", "integrate" )
     
     def __init__(self):
         Command.__init__(self)
@@ -1209,7 +1210,6 @@ class P4Sync(Command):
         self.usage += " //depot/path[@revRange]"
         self.silent = False
         self.createdBranches = set()
-        self.committedChanges = set()
         self.branch = ""
         self.detectBranches = False
         self.detectLabels = False
@@ -1239,6 +1239,8 @@ class P4Sync(Command):
         self.previousDepotPaths = []
         self.getUserList = True
         self.fuzzyTags = False
+        self.branchCommits = {} # last committed change (mark number) on a branch
+        self.changeListCommits = {} # changelist numbers and corresponding marks
 
         self.knownBranches = {}
         self.initialParents = {}
@@ -1388,6 +1390,7 @@ class P4Sync(Command):
     def commit(self, details, files, branch, branchPrefixes, parent = "", noteParent = ""):
         epoch = details["time"]
         author = details["user"]
+        change = int(details["change"])
 
         if self.verbose:
             print "commit into %s" % branch
@@ -1404,7 +1407,6 @@ class P4Sync(Command):
 
         self.gitStream.write("commit %s\n" % branch)
         self.gitStream.write("mark :%s\n" % self.markCounter)
-        self.committedChanges.add(int(details["change"]))
         committer = ""
         if author not in self.users and self.getUserList:
             self.getUserMapFromPerforceServer()
@@ -1422,6 +1424,22 @@ class P4Sync(Command):
             if self.verbose:
                 print "parent %s" % parent
             self.gitStream.write("from %s\n" % parent)
+        elif self.branchCommits.has_key(branch):
+            self.gitStream.write("from :%s\n" % self.branchCommits[branch])
+
+        if self.detectBranches and self.isMergeCommit(new_files):
+            (parentChange, parentBranch) = self.getMergeParentCommit(new_files, change)
+            # if parentBranch is None we probably have to deal with an integration where the source was ignored
+            if parentBranch:
+                if self.changeListCommits.has_key(parentChange):
+                    self.gitStream.write("merge :%s\n" % self.changeListCommits[parentChange])
+                else:
+                    # need to get change number from git repo - it was imported before
+                    commit = self.getGitCommitFromChange(parentBranch, parentChange)
+                    if commit == None:
+                        sys.stderr.write("Can't find second parent change for merge for changelist @%s (calculated @%s)\n" % (change, parentChange))
+                    else:
+                        self.gitStream.write("merge %s\n" % commit)
 
         for f in self.p4FileReader( new_files, self.clientSpecDirs ):
             if f["type"] == "apple":
@@ -1495,9 +1513,10 @@ class P4Sync(Command):
         if len(details['options']) > 0:
             self.gitStream.write(": options = %s" % details['options'])
         self.gitStream.write("]\nEOT\n\n")
-        
+
+        self.branchCommits[branch] = self.markCounter
+        self.changeListCommits[change] = self.markCounter
         self.markCounter += 2
-        change = int(details["change"])
 
         if self.labels.has_key(change):
             label = self.labels[change]
@@ -1545,6 +1564,58 @@ class P4Sync(Command):
                 if not self.silent:
                     print ("Tag %s does not match with change %s: file count is different (%s vs. %s from label)."
                            % (labelDetails["label"], change, len(cleanedFiles), len(labelRevisions)))
+
+    def isMergeCommit(self, files):
+        # we consider a changelist to be a merge if the majority of files have a
+        # merge or integrate action.
+        i = 0
+        for info in files:
+            if info["action"] in self.merge_actions:
+                i = i + 1
+        return i > len(files) / 2
+
+    def getGitCommitFromChange(self, branch, change):
+        # Returns the commit where change was imported into
+        settings = None
+        parent = 0
+        while parent < 65535:
+            commit = "p4/" + branch + "~%s" % parent
+            settings = extractSettingsFromNotes(commit)
+            if not settings:
+                return None
+            if settings.has_key("change") and int(settings["change"]) == change:
+                return commit
+            parent = parent + 1
+        return None
+
+    def getMergeParentCommit(self, files, changeNo):
+        # find and return the highest changelist number that this merge is based on
+        branches = p4BranchesInGit(self.importIntoRemotes)
+        highestParentChange = 0
+        parentBranch = None
+        for info in files:
+            filelog = self.p4.p4CmdList("filelog -i -h -m 2 \"%s@%s\"" % (info['path'], changeNo))
+            if len(filelog) >= 2 and filelog[1].has_key("change0"):
+                newChange = int(filelog[1]["change0"])
+                tmpBranch = filelog[1]["depotFile"]
+            elif len(filelog) >= 1 and filelog[0].has_key("how0,0") and filelog[0]["how0,0"] == "merge from":
+                tmpBranch = filelog[0]["file0,0"]
+                parentFileLog = self.p4.p4CmdList("filelog -i -h -m 2 \"%s@%s\"" % (tmpBranch, changeNo))
+                newChange = int(parentFileLog[0]["change0"])
+            else:
+                continue
+            # strip of // from the  beginning
+            tmpBranch = tmpBranch[2:]
+            for branch in branches:
+                if tmpBranch.startswith(branch):
+                    if branch != parentBranch and parentBranch:
+                        sys.stderr.write("File integrations coming from different branches are not supported (have %s, now %s)" % (parentBranch, branch))
+                    else:
+                        parentBranch = branch;
+                    break;
+            if newChange > highestParentChange:
+                highestParentChange = newChange
+        return (highestParentChange, parentBranch)
 
     def getUserCacheFilename(self):
         home = os.environ.get("HOME", os.environ.get("USERPROFILE"))
@@ -1795,7 +1866,7 @@ class P4Sync(Command):
         sourceRef = self.gitRefForBranch(sourceBranch)
         #print "source " + sourceBranch
 
-        branchParentChange = int(self.p4.p4Cmd("changes -m 1 %s...@1,%s" % (sourceDepotPath, firstChange))["change"])
+        branchParentChange = int(self.p4.p4Cmd("changes -m 1 %s/...@1,%s" % (sourceDepotPath, firstChange))["change"])
         #print "branch parent: %s" % branchParentChange
         gitParent = self.gitCommitByP4Change(sourceRef, branchParentChange)
         if len(gitParent) > 0:
@@ -1860,7 +1931,9 @@ class P4Sync(Command):
                         parent = self.initialParents[branch]
                         del self.initialParents[branch]
 
-                    self.commit(description, filesForCommit, branch, [branchPrefix], parent)
+                    self.branch = branch
+                    self.commit(description, filesForCommit, branch, [branchPrefix], parent, self.initialNoteParent)
+                    self.initialNoteParent = ""
             else:
                 files = self.extractFilesFromCommit(description)
                 if (cnt == 1 and restartImport):
@@ -2072,7 +2145,7 @@ class P4Sync(Command):
 
         # TODO: should always look at previous commits,
         # merge with previous imports, if possible.
-        if args == []:
+        if args == [] or self.detectBranches:
             if self.hasOrigin:
                 createOrUpdateBranchesFromOrigin(self.refPrefix, self.silent)
             self.listExistingP4GitBranches()
@@ -2085,10 +2158,11 @@ class P4Sync(Command):
             if self.verbose:
                 print "branches: %s" % self.p4BranchesInGit
             self.CalculateLastImportedP4ChangeList()
-            
+
         if not self.detectBranches:
             self.initialParent = parseRevision(self.branch)
-            self.initialNoteParent = parseRevision("refs/notes/git-p4")
+
+        self.initialNoteParent = parseRevision("refs/notes/git-p4")
 
         if not self.branch.startswith("refs/"):
             self.branch = "refs/heads/" + self.branch
@@ -2097,7 +2171,7 @@ class P4Sync(Command):
             if not self.silent:
                 print "Depot paths: %s" % ' '.join(self.depotPaths)
         else:
-            if self.depotPaths and self.depotPaths != args:
+            if self.depotPaths and self.depotPaths != args and not self.detectBranches:
                 print ("previous import used depot path %s and now %s was specified. "
                        "This doesn't work!" % (' '.join (self.depotPaths),
                                                ' '.join (args)))
