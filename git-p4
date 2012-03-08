@@ -79,7 +79,7 @@ class P4Helper:
 
         host = gitConfig("git-p4.host")
         if len(host) > 0:
-            real_cmd += "-h %s " % host
+            real_cmd += "-H %s " % host
 
         client = gitConfig("git-p4.client")
         if len(client) > 0:
