@@ -125,8 +125,7 @@ class P4Helper:
         # the execute bit setting in the passed in mode.
 
         p4Type = "+x"
-        if p4Type == '+x':
-          p4Type = 'text+x'
+
         if not isModeExec(mode):
             p4Type = self.getP4OpenedType(file)
             p4Type = re.sub('^([cku]?)x(.*)', '\\1\\2', p4Type)
