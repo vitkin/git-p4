@@ -1647,7 +1647,7 @@ class P4Sync(Command):
                 if cleanedFiles == labelRevisions or self.fuzzyTags:
                     if self.detectBranches:
                         self.gitStream.write("tag tag_%s_%s\n" % (localBranch, labelDetails["label"]))
-                    else
+                    else:
                         self.gitStream.write("tag tag_%s\n" % labelDetails["label"])
                     self.gitStream.write("from %s\n" % branch)
 
