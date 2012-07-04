@@ -1978,12 +1978,14 @@ class P4Sync(Command):
         sourceRef = self.gitRefForBranch(sourceBranch)
         #print "source " + sourceBranch
 
-        branchParentChange = int(self.p4.p4Cmd("changes -m 1 %s/...@1,%s" % (sourceDepotPath, firstChange))["change"])
-        #print "branch parent: %s" % branchParentChange
-        gitParent = self.gitCommitByP4Change(sourceRef, branchParentChange)
-        if len(gitParent) > 0:
-            self.initialParents[self.gitRefForBranch(branch)] = gitParent
-            #print "parent git commit: %s" % gitParent
+        sourceChanges = self.p4.p4Cmd("changes -m 1 %s/...@1,%s" % (sourceDepotPath, firstChange))
+        if sourceChanges.has_key("change"):
+            branchParentChange = int(sourceChanges["change"])
+            #print "branch parent: %s" % branchParentChange
+            gitParent = self.gitCommitByP4Change(sourceRef, branchParentChange)
+            if len(gitParent) > 0:
+                self.initialParents[self.gitRefForBranch(branch)] = gitParent
+                #print "parent git commit: %s" % gitParent
 
         self.importChanges(changes)
         return True
