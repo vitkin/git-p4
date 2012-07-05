@@ -1462,15 +1462,19 @@ class P4Sync(Command):
         if self.verbose:
             print "commit into %s" % branch
 
+        # need to apply tree filter to branchPrefixes as well!
+        filteredBranchPrefixes = []
+        for p in branchPrefixes:
+            filteredBranchPrefixes.append(self.applyFilter(self.treeFilter, p))
+
         # start with reading files; if that fails, we should not
         # create a commit.
         new_files = []
         for f in files:
-            if [p for p in branchPrefixes if f["targetPath"].startswith(p)]:
+            if [p for p in filteredBranchPrefixes if f["targetPath"].startswith(p)]:
                 new_files.append (f)
             else:
                 sys.stderr.write("Ignoring file outside of prefix: %s (mapped to %s)\n" % (f["path"], f["targetPath"]))
-        #files = self.readP4Files(new_files)
 
         isMergeCommit = self.detectBranches and self.isMergeCommit(new_files)
         if isMergeCommit:
