@@ -1447,7 +1447,7 @@ class P4Sync(Command):
                 pass
             return None
 
-    def commit(self, details, files, branch, branchPrefixes, parent = "", noteParent = ""):
+    def commit(self, details, files, branch, branchPrefixes, parent = "", noteParent = "", filterBranchPrefixes = True):
         # If the commit doesn't have any files (e.g. because all files got filtered out)
         # we ignore the commit. Note that we still get a merge commit because p4 reports
         # all files that were involved in the merge, so len(files) > 0.
@@ -1462,10 +1462,13 @@ class P4Sync(Command):
         if self.verbose:
             print "commit into %s" % branch
 
-        # need to apply tree filter to branchPrefixes as well!
-        filteredBranchPrefixes = []
-        for p in branchPrefixes:
-            filteredBranchPrefixes.append(self.applyFilter(self.treeFilter, p))
+        if filterBranchPrefixes:
+            # need to apply tree filter to branchPrefixes as well!
+            filteredBranchPrefixes = []
+            for p in branchPrefixes:
+                filteredBranchPrefixes.append(self.applyFilter(self.treeFilter, p))
+        else:
+            filteredBranchPrefixes = branchPrefixes
 
         # start with reading files; if that fails, we should not
         # create a commit.
@@ -2050,7 +2053,7 @@ class P4Sync(Command):
                         del self.initialParents[branch]
 
                     self.branch = branch
-                    self.commit(description, filesForCommit, branch, [branchPrefix], parent, self.initialNoteParent)
+                    self.commit(description, filesForCommit, branch, [branchPrefix], parent, self.initialNoteParent, False)
                     self.initialNoteParent = ""
 
                 # Add labels for this commit. A label may affect a branch even though the current
