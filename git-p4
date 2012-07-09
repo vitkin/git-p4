@@ -16,7 +16,7 @@ import StringIO
 
 #from sets import Set
 
-verbose = False
+verbose = False 
 
 def die(msg):
     if verbose:
@@ -319,7 +319,8 @@ def read_pipe(c, ignore_error=False):
     val = popen.communicate()[0]
     if popen.returncode and not ignore_error:
         die('Command failed: %s' % c)
-
+    if popen.returncode and verbose:
+        print "read_pipe error (ignoring!): %s" % c
     return val
 
 def read_pipe_lines(c):
@@ -440,7 +441,12 @@ def extractLogMessageFromGitCommit(commit):
 
 def extractSettingsFromNotes(commit):
     values = {}
+    if verbose:
+        print "extract settings..."
+        print commit
     note = read_pipe("git notes --ref=git-p4 show %s" % commit, True)
+    if verbose:
+        print note
     m = re.search (r"^ *\[(.*)\]$", note)
     if not m:
         return values
@@ -1863,7 +1869,8 @@ class P4Sync(Command):
         self.gitStream.flush();
         branchPrefix = self.depotPaths[0] + branch + "/"
         commitRange = "@1,%s" % maxChange
-        #print "prefix" + branchPrefix
+        if self.verbose:
+            print "!!!!prefix" + branchPrefix
         changes = self.p4.p4ChangesForPaths([branchPrefix], commitRange)
         if len(changes) <= 0:
             return False
@@ -2043,7 +2050,10 @@ class P4Sync(Command):
         p4Change = 0
         for branch in self.p4BranchesInGit:
             settings = extractSettingsFromNotes(self.refPrefix + branch)
-
+            if self.verbose:
+                print "settings:"
+                print self.refPrefix + branch
+                print settings
             self.readOptions(settings)
             if (settings.has_key('depot-paths')
                 and settings.has_key ('change')):
@@ -2140,6 +2150,8 @@ class P4Sync(Command):
             system("git fetch origin")
 
         if len(self.branch) == 0:
+            if self.verbose:
+                print "len(self.branch) == 0"
             self.branch = self.refPrefix + "master"
             if gitBranchExists("refs/heads/p4") and self.importIntoRemotes:
                 system("git update-ref %s refs/heads/p4" % self.branch)
@@ -2176,7 +2188,7 @@ class P4Sync(Command):
             self.branch = "refs/heads/" + self.branch
 
         if len(args) == 0 and self.depotPaths:
-            if not self.silent:
+            if self.verbose:
                 print "Depot paths: \n%s" % '\n'.join(self.depotPaths)
         else:
             if self.depotPaths and self.depotPaths != args and not self.detectBranches:
@@ -2186,6 +2198,10 @@ class P4Sync(Command):
                 sys.exit(1)
 
             self.depotPaths = sorted(args)
+
+        if self.verbose:
+            print "self.depotPaths: "
+            print self.depotPaths
 
         self.users = {}
 
@@ -2232,8 +2248,7 @@ class P4Sync(Command):
 
                     changes.sort()
                 else:
-                    if self.verbose:
-                        print "Getting p4 changes for %s...%s" % (', '.join(self.depotPaths),
+                    print "Getting p4 changes for %s...%s" % (', '.join(self.depotPaths),
                                                                   self.changeRange)
                     changes = self.p4.p4ChangesForPaths(self.depotPaths, self.changeRange)
                     if self.verbose:
@@ -2302,7 +2317,6 @@ class P4Rebase(P4Sync):
             die("Some files in your working directory are modified and different than what is in your index. You can use git update-index <filename> to bring the index up-to-date or stash away all your changes with git stash.");
         if len(read_pipe("git diff-index HEAD --")) > 0:
             die("You have uncommited changes. Please commit them before rebasing or stash them away with git stash.");
-
         [upstream, settings] = findUpstreamBranchPoint()
         if len(upstream) == 0:
             die("Cannot find upstream branchpoint for rebase")
