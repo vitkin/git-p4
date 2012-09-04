@@ -1250,6 +1250,7 @@ class P4Sync(Command):
         self.treeFilter = ""
         self.msgFilter = ""
         self.contentFilter = ""
+        self.contentFilterDir = ""
 
         self.knownBranches = {}
         self.initialParents = {}
