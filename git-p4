@@ -1245,7 +1245,6 @@ class P4Sync(Command):
         self.previousDepotPaths = []
         self.getUserList = True
         self.fuzzyTags = False
-        self.branchCommits = {} # last committed change (mark number) on a branch
         self.changeListCommits = {} # changelist numbers and corresponding marks
         self.treeFilter = ""
         self.msgFilter = ""
@@ -1503,12 +1502,6 @@ class P4Sync(Command):
         self.gitStream.write("data <<EOT\n")
         self.gitStream.write(description)
         self.gitStream.write("\nEOT\n\n")
-        if parent:
-            if self.verbose:
-                print "parent %s" % parent
-            self.gitStream.write("from %s\n" % parent)
-        elif self.branchCommits.has_key(branch):
-            self.gitStream.write("from :%s\n" % self.branchCommits[branch])
 
         if isMergeCommit:
             (parentChange, parentBranch) = self.getMergeParentCommit(new_files, change)
@@ -1615,7 +1608,6 @@ class P4Sync(Command):
             self.gitStream.write(": options = %s" % details['options'])
         self.gitStream.write("]\nEOT\n\n")
 
-        self.branchCommits[branch] = self.markCounter
         localBranch = branch[len(getRefsPrefix(self.importIntoRemotes)):]
         if not self.changeListCommits.has_key(localBranch):
             self.changeListCommits[localBranch] = {}
