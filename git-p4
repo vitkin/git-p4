@@ -1715,7 +1715,7 @@ class P4Sync(Command):
 
     def getMergeParentCommit(self, files, changeNo):
         # find and return the highest changelist number that this merge is based on
-        branches = p4BranchesInGit(self.importIntoRemotes)
+        branches = self.createdBranches
         highestParentChange = 0
         parentBranch = None
         for info in files:
@@ -2050,8 +2050,10 @@ class P4Sync(Command):
                                 if not self.silent:
                                     print("\n    Resuming with change %s" % change);
 
-                            if self.verbose:
-                                print "parent determined through known branches: %s" % parent
+                            # We don't want to set a parent for a new branch since that would result in a tree
+                            # that starts out with the parent branch. We want to start with an empty tree since
+                            # we list all files that should go into the branch.
+                            parent = ""
 
                     branch = self.gitRefForBranch(branch)
                     parent = self.gitRefForBranch(parent)
