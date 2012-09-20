@@ -1655,13 +1655,6 @@ class P4Sync(Command):
 
             if len(cleanedFiles) == len(labelRevisions) or self.fuzzyTags:
 
-                if self.fuzzyTags and len(cleanedFiles) != len(labelRevisions):
-                    for fileInLabel in labelRevisions:
-                        if cleanedFiles.has_key(fileInLabel) and cleanedFiles[fileInLabel] != labelRevisions[fileInLabel]:
-                            print ("Tag %s does not match with change %s: revision of file %s different" 
-                                   % (labelDetails["label"], change, fileInLabel))
-                            return
-
                 if cleanedFiles == labelRevisions or self.fuzzyTags:
                     if self.detectBranches:
                         self.gitStream.write("tag tag_%s_%s\n" % (localBranch, labelDetails["label"]))
