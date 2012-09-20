@@ -1630,20 +1630,34 @@ class P4Sync(Command):
             label = self.labels[change]
             labelDetails = label[0]
             labelRevisions = label[1]
-            if self.verbose:
-                print "Change %s is labeled %s" % (change, labelDetails)
 
             files = self.p4.p4CmdList("files " +  ' '.join (['"%s@%s"' % (p, change)
                                                 for p in labelDetails["Views"]]))
             cleanedFiles = {}
             for info in files:
-                cleanedFiles[info["depotFile"]] = info["rev"]
+                # Check if file (with applied filter and stripped //depot/) matches our branch
+                fileToCheck = self.applyFilter(self.treeFilter, info["depotFile"])
+
+                for depot in self.depotPaths:
+                    if fileToCheck.startswith(depot):
+                        fileToCheck = fileToCheck[len(depot):]
+                        break;
+
+                if fileToCheck.startswith(localBranch):
+                    cleanedFiles[info["depotFile"]] = info["rev"]
+
+            if len(cleanedFiles) == 0:
+                # Label has no files on our branch
+                return
+
+            if self.verbose:
+                print "Change %s for branch %s is labeled %s" % (change, localBranch, labelDetails)
 
             if len(cleanedFiles) == len(labelRevisions) or self.fuzzyTags:
 
                 if self.fuzzyTags and len(cleanedFiles) != len(labelRevisions):
                     for fileInLabel in labelRevisions:
-                        if not cleanedFiles.has_key(fileInLabel) or cleanedFiles[fileInLabel] != labelRevisions[fileInLabel]:
+                        if cleanedFiles.has_key(fileInLabel) and cleanedFiles[fileInLabel] != labelRevisions[fileInLabel]:
                             print ("Tag %s does not match with change %s: revision of file %s different" 
                                    % (labelDetails["label"], change, fileInLabel))
                             return
