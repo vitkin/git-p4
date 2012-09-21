@@ -1263,10 +1263,11 @@ class P4Sync(Command):
     def extractFilesFromCommit(self, commit):
         self.cloneExclude = [re.sub(r"\.\.\.$", "", path)
                              for path in self.cloneExclude]
-        files = []
+        tmpFiles = []
+        filesString = ''
         fnum = 0
         while commit.has_key("depotFile%s" % fnum):
-            path =  commit["depotFile%s" % fnum]
+            path = commit["depotFile%s" % fnum]
 
             if [p for p in self.cloneExclude
                 if path.startswith (p)]:
@@ -1276,22 +1277,25 @@ class P4Sync(Command):
                          if path.startswith (p)]
 
             if found:
-                targetPath = self.applyFilter(self.treeFilter, path)
-                if not targetPath:
-                    found = False
+                filesString += path + '\n'
+                f = {}
+                f["path"] = path
+                f["rev"] = commit["rev%s" % fnum]
+                f["action"] = commit["action%s" % fnum]
+                f["type"] = commit["type%s" % fnum]
+                tmpFiles.append(f)
+            fnum += 1
 
-            if not found:
-                fnum = fnum + 1
-                continue
+        filteredFiles = self.applyFilter(self.treeFilter, filesString).split('\n')
 
-            f = {}
-            f["path"] = path
-            f["targetPath"] = targetPath
-            f["rev"] = commit["rev%s" % fnum]
-            f["action"] = commit["action%s" % fnum]
-            f["type"] = commit["type%s" % fnum]
-            files.append(f)
-            fnum = fnum + 1
+        files = []
+        i = 0
+        for file in filteredFiles:
+            if file:
+                f = tmpFiles[i]
+                f["targetPath"] = file
+                files.append(f)
+            i += 1
         return files
 
     def stripRepoPath(self, path, prefixes):
@@ -1305,7 +1309,8 @@ class P4Sync(Command):
         return path
 
     def splitFilesIntoBranches(self, commit):
-        branches = {}
+        files = []
+        filesString = ''
         fnum = 0
         while commit.has_key("depotFile%s" % fnum):
             path =  commit["depotFile%s" % fnum]
@@ -1313,21 +1318,25 @@ class P4Sync(Command):
                      if path.startswith (p)]
 
             if found:
-                targetPath = self.applyFilter(self.treeFilter, path)
-                if not targetPath:
-                    found = False
+                f = {}
+                f["path"] = path
+                f["rev"] = commit["rev%s" % fnum]
+                f["action"] = commit["action%s" % fnum]
+                f["type"] = commit["type%s" % fnum]
+                files.append(f)
+                filesString += path + '\n'
+            fnum += 1
 
-            if not found:
-                fnum = fnum + 1
-                continue
+        filteredFiles = self.applyFilter(self.treeFilter, filesString).split('\n')
 
-            f = {}
-            f["path"] = path
+        branches = {}
+        i = 0
+        for targetPath in filteredFiles:
+            f = files[i]
             f["targetPath"] = targetPath
-            f["rev"] = commit["rev%s" % fnum]
-            f["action"] = commit["action%s" % fnum]
-            f["type"] = commit["type%s" % fnum]
-            fnum = fnum + 1
+            i += 1
+            if not targetPath:
+                continue
 
             relPath = self.stripRepoPath(targetPath, self.depotPaths)
 
@@ -1633,10 +1642,8 @@ class P4Sync(Command):
 
         files = self.p4.p4CmdList("files " +  ' '.join (['"%s@%s"' % (p, change)
                                             for p in labelDetails["Views"]]))
-        filesString = ''
-        for info in files:
-            filesString += info["depotFile"] + '\n'
-        filteredFiles = self.applyFilter(self.treeFilter, filesString).split('\n')
+
+        filteredFiles = self.applyFilter(self.treeFilter, '\n'.join([info["depotFile"] for info in files])).split('\n')
 
         labelFiles = []
         for fileToCheck in filteredFiles:
