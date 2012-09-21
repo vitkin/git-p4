@@ -1253,6 +1253,9 @@ class P4Sync(Command):
 
         self.knownBranches = {}
         self.initialParents = {}
+
+        self.lastLabelChange = 0 # changelist# of last processed label
+        self.lastLabelFiles = [] # files included in last processed label
         
         if gitConfig("git-p4.syncFromOrigin") == "false":
             self.syncWithOrigin = False
@@ -1414,7 +1417,7 @@ class P4Sync(Command):
         if not filter:
             return path
 
-        # The tree filter is a script that gets the path of one file (in p4 notation, e.g. //depot/branch/file.txt)
+        # The tree filter is a script that gets the path of one or more files (in p4 notation, e.g. //depot/branch/file.txt)
         # on stdin. It can output a modified path on stdout, or return an empty string to ignore this file.
         # The msg filter is a script that gets the commit message on stdin and returns
         # a modified commit message.
@@ -1621,6 +1624,33 @@ class P4Sync(Command):
         if not self.detectBranches:
             self.commitLabel(details, branch, change)
 
+    def getFilesForLabel(self, label, change):
+        if change == self.lastLabelChange:
+            return self.lastLabelFiles
+
+        labelDetails = label[0]
+        print "Getting files for label %s (change %s)" % (labelDetails["label"], change)
+
+        files = self.p4.p4CmdList("files " +  ' '.join (['"%s@%s"' % (p, change)
+                                            for p in labelDetails["Views"]]))
+        filesString = ''
+        for info in files:
+            filesString += info["depotFile"] + '\n'
+        filteredFiles = self.applyFilter(self.treeFilter, filesString).split('\n')
+
+        labelFiles = []
+        for fileToCheck in filteredFiles:
+            # Check if file (with applied filter and stripped //depot/) matches our branch
+            for depot in self.depotPaths:
+                if fileToCheck.startswith(depot):
+                    fileToCheck = fileToCheck[len(depot):]
+                    break;
+            labelFiles.append(fileToCheck)
+
+        self.lastLabelChange = change
+        self.lastLabelFiles = labelFiles
+        return labelFiles
+
     def commitLabel(self, details, branch, change):
         if self.labels.has_key(change):
             epoch = details["time"]
@@ -1631,20 +1661,12 @@ class P4Sync(Command):
             labelDetails = label[0]
             labelRevisions = label[1]
 
-            files = self.p4.p4CmdList("files " +  ' '.join (['"%s@%s"' % (p, change)
-                                                for p in labelDetails["Views"]]))
-            cleanedFiles = {}
-            for info in files:
+            files = self.getFilesForLabel(label, change)
+            cleanedFiles = []
+            for fileToCheck in files:
                 # Check if file (with applied filter and stripped //depot/) matches our branch
-                fileToCheck = self.applyFilter(self.treeFilter, info["depotFile"])
-
-                for depot in self.depotPaths:
-                    if fileToCheck.startswith(depot):
-                        fileToCheck = fileToCheck[len(depot):]
-                        break;
-
                 if fileToCheck.startswith(localBranch):
-                    cleanedFiles[info["depotFile"]] = info["rev"]
+                    cleanedFiles.append(fileToCheck)
 
             if len(cleanedFiles) == 0:
                 # Label has no files on our branch
