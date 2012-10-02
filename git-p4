@@ -1430,18 +1430,18 @@ class P4Sync(Command):
         # on stdin. It can output a modified path on stdout, or return an empty string to ignore this file.
         # The msg filter is a script that gets the commit message on stdin and returns
         # a modified commit message.
-        # The content filter gets called for text files and is passed the name of a temporary file on stdin and can modify that.
+        # The content filter gets called for text files and is passed the name of the file on stdin and can modify that.
         filterProc = subprocess.Popen(filter, stdout=subprocess.PIPE, stdin=subprocess.PIPE, stderr=subprocess.STDOUT, shell=True, env=env, cwd=cwd)
         output = filterProc.communicate(path)[0]
         return output.rstrip()
 
-    def applyContentFilter(self, filter, data):
+    def applyContentFilter(self, filter, path, data):
         if not filter:
             return data
 
-        tmpfile = tempfile.NamedTemporaryFile(dir=self.contentFilterDir, delete=False)
+        fileName = "%s/%s" % (self.contentFilterDir, os.path.basename(path))
+        tmpfile = open(fileName, "w+")
         try:
-            fileName = tmpfile.name
             tmpfile.write(data)
             tmpfile.close()
             env = os.environ.copy()
@@ -1564,7 +1564,7 @@ class P4Sync(Command):
 
                 # apply content filter
                 if f["type"].endswith("text"):
-                    data = self.applyContentFilter(self.contentFilter, data)
+                    data = self.applyContentFilter(self.contentFilter, relPath, data)
 
                 if data == None:
                     errorFile = open("git-p4-errors", "a")
