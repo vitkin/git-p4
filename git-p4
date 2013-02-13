@@ -790,10 +790,18 @@ class P4FileReader:
 
             if header['type'].startswith('utf16'):
                 # Don't even try to convert utf16. Ask p4 to write the file directly.
-                tmpFile = tempfile.NamedTemporaryFile()
+                # on windows, NamedTemporaryFile creates a file that is locked so we can't actually print -o to it.
+                if os.name == 'nt':
+                    # create a temp file but don't delete it when it's closed
+                    tmpFile = tempfile.NamedTemporaryFile(delete=false)
+                    tmpFile.close()
+                else:
+                    tmpFile = tempfile.NamedTemporaryFile()
+
                 P4Helper().p4_system("print -o \"%s\" \"%s\"" % (tmpFile.name, escapeStringP4(header['depotFile'])))
                 text = open(tmpFile.name).read()
                 tmpFile.close()
+                # TODO for windows, figure out how we can delete this file -- git-bash creates the files as readonly
             else:
                 text = textBuffer.getvalue()
             textBuffer.close()
