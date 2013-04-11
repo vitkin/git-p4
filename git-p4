@@ -10,6 +10,7 @@
 
 import optparse, sys, os, marshal, subprocess, shlex
 import tempfile, os.path, time, platform
+import urllib
 import re
 import cStringIO
 import StringIO
@@ -1305,6 +1306,9 @@ class P4Sync(Command):
         for p in prefixes:
             if path.startswith(p):
                 path = path[len(p):]
+
+        # paths come in percent-encoded for @,%,#,* (url-style)
+        path = urllib.unquote(path)
 
         return path
 
