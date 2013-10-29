@@ -793,7 +793,7 @@ class P4FileReader:
                 # on windows, NamedTemporaryFile creates a file that is locked so we can't actually print -o to it.
                 if os.name == 'nt':
                     # create a temp file but don't delete it when it's closed
-                    tmpFile = tempfile.NamedTemporaryFile(delete=false)
+                    tmpFile = tempfile.NamedTemporaryFile(delete=False)
                     tmpFile.close()
                 else:
                     tmpFile = tempfile.NamedTemporaryFile()
