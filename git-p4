@@ -2636,6 +2636,8 @@ class P4Shelve(P4Submit):
                % (fileName, self.clnumber, fileName))
 
     def applyCommits(self):
+        if len(self.commits) == 0:
+            die("Fatal error: No commits to shelve")
         firstCommit = self.commits[0]
         lastCommit = self.commits[len(self.commits) - 1]
         if firstCommit == lastCommit:
