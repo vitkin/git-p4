@@ -830,6 +830,7 @@ class P4Submit(Command):
             self.detectCopy = True
         self.verbose = False
         self.isWindows = (platform.system() == "Windows")
+        self.updateP4Refs = True
         self.importIntoRemotes = True
         if gitConfig("git-p4.importIntoRemotes") == "false":
             self.importIntoRemotes = False
@@ -935,7 +936,15 @@ class P4Submit(Command):
         return dest
 
     def submitCommit(self, submitTemplate):
-        return self.p4.p4_read_write_pipe("-G submit -i", submitTemplate)
+        changelist = 0
+        output = self.p4.p4_read_write_pipe("submit -i", submitTemplate)
+        print(output)
+        match = re.search("Change ([0-9]+) submitted", output)
+        if match:
+            changelist = match.group(1)
+        else:
+            die("Couldn't get changelist number from 'submit'")
+        return changelist
 
     def revertCommit(self):
         for f in self.editedFiles:
@@ -997,20 +1006,8 @@ class P4Submit(Command):
             tmpFile = open(fileName, "r")
             message = tmpFile.read()
             tmpFile.close()
-            tmpFile = tempfile.NamedTemporaryFile()
             submitTemplate = message[:message.index(separatorLine)]
-            tmpFile.write(submitTemplate)
-            tmpFile.flush()
-
-            cmd = "cat %s | %s" % (tmpFile.name, self.p4.p4_build_cmd("submit -i"))
-            popen = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE)
-            output = popen.communicate()[0]
-            tmpFile.close
-            if popen.returncode:
-                die('Command failed: %s' % cmd)
-            match = re.search("Change ([0-9]+) submitted", output)
-            if match:
-                changelist = match.group(1)
+            changelist = self.submitCommit(submitTemplate)
         else:
             self.revertCommit()
 
@@ -1162,7 +1159,8 @@ class P4Submit(Command):
         self.applyCommits()
         
         if self.abort == False:
-            system("git update-ref %s%s %s" % (getRefsPrefix(self.importIntoRemotes), self.master, self.master))
+            if self.updateP4Refs:
+                system("git update-ref %s%s %s" % (getRefsPrefix(self.importIntoRemotes), self.master, self.master))
 
             if len(self.commits) == 0:
                 print "All changes applied!"
@@ -2615,6 +2613,7 @@ class P4Shelve(P4Submit):
         self.clnumber = ""
         self.existingClNumber = ""
         self.deleteShelve = False
+        self.updateP4Refs = False
         
     def integrateFile(self, diff, changelist=""):
         changelist = "-c %s" % self.clnumber
@@ -2625,6 +2624,7 @@ class P4Shelve(P4Submit):
         self.p4.p4_system("revert -c %s \"%s...\"" % (self.clnumber, escapeStringP4(self.depotPath)))
         print("")
         print("Shelved files in Perforce changelist # %s" % self.clnumber)
+        return self.clnumber
 
     def revertCommit(self):
         P4Submit.revertCommit(self)
@@ -2644,7 +2644,7 @@ class P4Shelve(P4Submit):
         logMessage = ""
         for commit in self.commits:
             print "Shelving %s" % (read_pipe("git log --max-count=1 --pretty=oneline %s" % commit))
-            logMessage += extractLogMessageFromGitCommit(id)
+            logMessage += extractLogMessageFromGitCommit(commit)
 
         logMessage = logMessage.strip()
 
