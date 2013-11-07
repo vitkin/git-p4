@@ -1330,11 +1330,11 @@ class P4Sync(Command):
         branches = {}
         i = 0
         for targetPath in filteredFiles:
+            if not targetPath:
+                continue
             f = files[i]
             f["targetPath"] = targetPath
             i += 1
-            if not targetPath:
-                continue
 
             relPath = self.stripRepoPath(targetPath, self.depotPaths)
 
@@ -2376,7 +2376,10 @@ class P4Sync(Command):
             else:
                 debugDumpFile = None
 
-            importProcess = subprocess.Popen(["git", "fast-import"],
+            fastImportCmd = ["git", "fast-import"]
+            if not self.verbose:
+                fastImportCmd.append("--quiet")
+            importProcess = subprocess.Popen(fastImportCmd,
                                              stdin=subprocess.PIPE, stdout=subprocess.PIPE)
             self.gitStream = LargeFileWriter(importProcess.stdin, debugDumpFile)
 
