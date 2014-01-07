@@ -138,7 +138,7 @@ class P4Helper:
     def getP4OpenedType(self, file):
         # Returns the perforce file type for the given file.
         result = self.p4_read_pipe("opened \"%s\"" % escapeStringP4only(file))
-        match = re.match(".*\((.+)\)\r?$", result)
+        match = re.match(".*\((.+)\)\r?", result)
         if match:
             return match.group(1)
         else:
