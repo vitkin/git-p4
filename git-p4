@@ -10,6 +10,7 @@
 
 import optparse, sys, os, marshal, subprocess, shlex
 import tempfile, os.path, time, platform
+import urllib
 import re
 import cStringIO
 import StringIO
@@ -1304,6 +1305,9 @@ class P4Sync(Command):
             if path.startswith(p):
                 path = path[len(p):]
 
+        # paths come in percent-encoded for @,%,#,* (url-style)
+        path = urllib.unquote(path)
+
         return path
 
     def splitFilesIntoBranches(self, commit):
@@ -1583,7 +1587,7 @@ class P4Sync(Command):
             relPath = self.stripRepoPath(f["targetPath"], branchPrefixes)
             if len(self.clientSpecDirs):
                 for val in self.clientSpecDirs:
-                    if relPath.startswith(val[0]):
+                    if f["targetPath"].startswith(val[0]):
                         if val[1] > 0:
                             includeFile = True
                         else:
