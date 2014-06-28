@@ -17,7 +17,7 @@ import StringIO
 
 #from sets import Set
 
-verbose = False
+verbose = False 
 
 def die(msg):
     if verbose:
@@ -88,7 +88,7 @@ class P4Helper:
 
         real_cmd += "-d \"%s\" %s" % (os.getcwd(), cmd)
         if verbose:
-            print real_cmd
+            print "THE COMMAND IS '" + real_cmd + "'"
         return real_cmd
 
     def p4_write_pipe(self, c, str):
@@ -139,7 +139,7 @@ class P4Helper:
     def getP4OpenedType(self, file):
         # Returns the perforce file type for the given file.
         result = self.p4_read_pipe("opened \"%s\"" % escapeStringP4only(file))
-        match = re.match(".*\((.+)\)\r?$", result)
+        match = re.match(".*\((.+)\)\r?", result)
         if match:
             return match.group(1)
         else:
@@ -171,6 +171,11 @@ class P4Helper:
         try:
             while True:
                 entry = marshal.load(p4.stdout)
+                
+                if entry['code'] == 'error':
+                    sys.stderr.write("p4 returned an error: %s\n" % entry['data'])
+                    sys.exit(1)
+                
                 result.append(entry)
         except EOFError:
             pass
@@ -230,7 +235,7 @@ class P4Helper:
 
     def p4ChangesForPaths(self, depotPaths, changeRange):
         assert depotPaths
-        output = self.p4_read_pipe_lines("changes " + ' '.join (["%s...%s" % (p, changeRange)
+        output = self.p4_read_pipe_lines("changes " + ' '.join (['"%s..."%s' % (p, changeRange)
                                                             for p in depotPaths]))
 
         changes = []
@@ -315,7 +320,8 @@ def read_pipe(c, ignore_error=False):
     val = popen.communicate()[0]
     if popen.returncode and not ignore_error:
         die('Command failed: %s' % c)
-
+    if popen.returncode and verbose:
+        print "read_pipe error (ignoring!): %s" % c
     return val
 
 def read_pipe_lines(c):
@@ -406,7 +412,7 @@ class P4CmdReader:
             raise StopIteration
 
 def currentGitBranch():
-    return read_pipe("git name-rev HEAD").split(" ")[1].strip()
+    return read_pipe("git symbolic-ref -q HEAD")[len('refs/heads/'):].strip()
 
 def isValidGitDir(path):
     if (os.path.exists(path + "/HEAD")
@@ -436,7 +442,12 @@ def extractLogMessageFromGitCommit(commit):
 
 def extractSettingsFromNotes(commit):
     values = {}
+    if verbose:
+        print "extract settings..."
+        print commit
     note = read_pipe("git notes --ref=git-p4 show %s" % commit, True)
+    if verbose:
+        print note
     m = re.search (r"^ *\[(.*)\]$", note)
     if not m:
         return values
@@ -781,10 +792,18 @@ class P4FileReader:
 
             if header['type'].startswith('utf16'):
                 # Don't even try to convert utf16. Ask p4 to write the file directly.
-                tmpFile = tempfile.NamedTemporaryFile()
+                # on windows, NamedTemporaryFile creates a file that is locked so we can't actually print -o to it.
+                if os.name == 'nt':
+                    # create a temp file but don't delete it when it's closed
+                    tmpFile = tempfile.NamedTemporaryFile(delete=False)
+                    tmpFile.close()
+                else:
+                    tmpFile = tempfile.NamedTemporaryFile()
+
                 P4Helper().p4_system("print -o \"%s\" \"%s\"" % (tmpFile.name, escapeStringP4(header['depotFile'])))
                 text = open(tmpFile.name).read()
                 tmpFile.close()
+                # TODO for windows, figure out how we can delete this file -- git-bash creates the files as readonly
             else:
                 text = textBuffer.getvalue()
             textBuffer.close()
@@ -898,8 +917,8 @@ class P4Submit(Command):
     def applyPatch(self, id):
         diffcmd = "git format-patch -k --stdout \"%s^\"..\"%s\"" % (id, id)
         patchcmd = diffcmd + " | git apply "
-        tryPatchCmd = patchcmd + "--check -"
-        applyPatchCmd = patchcmd + "--check --apply -"
+        tryPatchCmd = patchcmd + "--check --ignore-whitespace --ignore-space-change -"
+        applyPatchCmd = patchcmd + "--check --apply --ignore-whitespace --ignore-space-change -"
 
         if os.system(tryPatchCmd) != 0:
             print "Unfortunately applying the change failed!"
@@ -1106,14 +1125,18 @@ class P4Submit(Command):
         self.p4.p4_system("sync ...")
 
     def run(self, args):
-        if len(args) == 0:
-            self.master = currentGitBranch()
-            if len(self.master) == 0 or not gitBranchExists("refs/heads/%s" % self.master):
-                die("Detecting current git branch failed!")
-        elif len(args) == 1:
-            self.master = args[0]
-        else:
-            return False
+#        if len(args) == 0:
+            # note: this part doesn't work so well.
+            # so forcing it to be "master" if not otherwise explained.
+#            self.master = "master"
+#            self.master = currentGitBranch()
+#            if len(self.master) == 0 or not gitBranchExists("refs/heads/%s" % self.master):
+#                die("Detecting current git branch failed!")
+#        elif len(args) == 1:
+#            self.master = args[0]
+#        else:
+#            return False
+        self.master = "master"
 
         allowSubmit = gitConfig("git-p4.allowSubmit")
         if len(allowSubmit) > 0 and not self.master in allowSubmit.split(","):
@@ -2009,7 +2032,8 @@ class P4Sync(Command):
         self.gitStream.flush();
         branchPrefix = self.depotPaths[0] + branch + "/"
         commitRange = "@1,%s" % maxChange
-        #print "prefix" + branchPrefix
+        if self.verbose:
+            print "!!!!prefix" + branchPrefix
         changes = self.p4.p4ChangesForPaths([branchPrefix], commitRange)
         if len(changes) <= 0:
             return False
@@ -2202,7 +2226,10 @@ class P4Sync(Command):
         p4Change = 0
         for branch in self.p4BranchesInGit:
             settings = extractSettingsFromNotes(self.refPrefix + branch)
-
+            if self.verbose:
+                print "settings:"
+                print self.refPrefix + branch
+                print settings
             self.readOptions(settings)
             if (settings.has_key('depot-paths')
                 and settings.has_key ('change')):
@@ -2309,6 +2336,8 @@ class P4Sync(Command):
             system("git fetch origin")
 
         if len(self.branch) == 0:
+            if self.verbose:
+                print "len(self.branch) == 0"
             self.branch = self.refPrefix + "master"
             if gitBranchExists("refs/heads/p4") and self.importIntoRemotes:
                 system("git update-ref %s refs/heads/p4" % self.branch)
@@ -2345,8 +2374,8 @@ class P4Sync(Command):
             self.branch = "refs/heads/" + self.branch
 
         if len(args) == 0 and self.depotPaths:
-            if not self.silent:
-                print "Depot paths: %s" % ' '.join(self.depotPaths)
+            if self.verbose:
+                print "Depot paths: \n%s" % '\n'.join(self.depotPaths)
         else:
             if self.depotPaths and self.depotPaths != args and not self.detectBranches:
                 print ("previous import used depot path %s and now %s was specified. "
@@ -2355,6 +2384,10 @@ class P4Sync(Command):
                 sys.exit(1)
 
             self.depotPaths = sorted(args)
+
+        if self.verbose:
+            print "self.depotPaths: "
+            print self.depotPaths
 
         self.users = {}
 
@@ -2404,8 +2437,7 @@ class P4Sync(Command):
 
                     changes.sort()
                 else:
-                    if self.verbose:
-                        print "Getting p4 changes for %s...%s" % (', '.join(self.depotPaths),
+                    print "Getting p4 changes for %s...%s" % (', '.join(self.depotPaths),
                                                                   self.changeRange)
                     changes = self.p4.p4ChangesForPaths(self.depotPaths, self.changeRange)
                     if self.verbose:
@@ -2477,7 +2509,6 @@ class P4Rebase(P4Sync):
             die("Some files in your working directory are modified and different than what is in your index. You can use git update-index <filename> to bring the index up-to-date or stash away all your changes with git stash.");
         if len(read_pipe("git diff-index HEAD --")) > 0:
             die("You have uncommited changes. Please commit them before rebasing or stash them away with git stash.");
-
         [upstream, settings] = findUpstreamBranchPoint()
         if len(upstream) == 0:
             die("Cannot find upstream branchpoint for rebase")
