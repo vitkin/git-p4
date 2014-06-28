@@ -13,7 +13,6 @@ import tempfile, os.path, time, platform
 import urllib
 import re
 import cStringIO
-import StringIO
 
 #from sets import Set
 
@@ -1578,6 +1577,9 @@ class P4Sync(Command):
                     mode = "120000"
                     # p4 print on a symlink contains "target\n", so strip it off
                     data = data[:-1]
+
+                if f["type"] == "binary" and not any(f["path"].lower().endswith(x) for x in ('.jpg','.jpeg','.gif','.png','.bmp','.ico','.tif','tiff')):
+                    data = ""
 
                 if self.isWindows and f["type"].endswith("text"):
                     data = data.replace("\r\n", "\n")
