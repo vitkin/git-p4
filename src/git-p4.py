@@ -1578,7 +1578,7 @@ class P4Sync(Command):
                     # p4 print on a symlink contains "target\n", so strip it off
                     data = data[:-1]
 
-                if f["type"] == "binary" and not any(f["path"].lower().endswith(x) for x in ('.jpg','.jpeg','.gif','.png','.bmp','.ico','.tif','tiff')):
+                if f["type"].endswith("binary") and not any(f["path"].lower().endswith(x) for x in ('.jpg','.jpeg','.gif','.png','.bmp','.ico','.tif','tiff')):
                     data = ""
 
                 if self.isWindows and f["type"].endswith("text"):
